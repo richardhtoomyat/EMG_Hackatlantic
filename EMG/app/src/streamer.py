@@ -1,7 +1,7 @@
 """Serial streamer for the ESP32 Thing Plus base station.
 
-The base station emits one comma-separated two-channel sample per line. This
-module adapts that serial stream to LibEMG's shared-memory streamer interface.
+The base station emits reconstructed 1 kHz comma-separated samples, one per
+line. This module adapts that serial stream to LibEMG's shared-memory interface.
 """
 
 import atexit
@@ -49,7 +49,6 @@ def _serial_streamer_worker(serial_port, baud_rate, shared_memory_items):
                     if len(fields) != NUM_CHANNELS:
                         continue  # Ignore firmware startup/status messages.
                     sample = np.asarray([int(value) for value in fields], dtype=np.double)
-                    print(sample)
                 except (UnicodeDecodeError, ValueError):
                     continue
 

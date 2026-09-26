@@ -14,6 +14,7 @@ static unsigned long lastSampleMicros = 0;
 static volatile uint16_t activeEpoch = 0;
 static volatile uint16_t nextSequence = 0;
 static volatile bool synchronized = false;
+static uint8_t samplesInBatch = 0;
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 void onDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
@@ -25,6 +26,7 @@ void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     if (incoming->type == PACKET_TYPE_SYNC) {
         activeEpoch = incoming->epoch;
         nextSequence = 0;
+        samplesInBatch = 0;
         lastSampleMicros = micros();
         synchronized = true;
     }
@@ -63,6 +65,7 @@ void setup() {
     // Set static channel identifier from compile flag
     packet.type = PACKET_TYPE_SAMPLE;
     packet.id = SENDER_ID;
+    packet.sampleCount = SAMPLES_PER_BATCH;
 
     Serial.printf("[INIT] Transmitter ready. Assigned Channel ID: %d\n", packet.id);
 }
@@ -70,16 +73,16 @@ void setup() {
 void loop() {
     unsigned long currentMicros = micros();
 
-    // Hardware sampling tick (1000 Hz)
+    // Sample locally at 1 kHz; transmit one packet for every ten readings.
     if (synchronized && currentMicros - lastSampleMicros >= SAMPLE_INTERVAL_US) {
         lastSampleMicros = currentMicros;
 
-        // Sample EMG voltage
-        packet.sample = static_cast<uint16_t>(analogRead(EMG_PIN));
-        packet.epoch = activeEpoch;
-        packet.sequence = nextSequence++;
-
-        // Transmit the sample with its shared epoch and sequence number.
-        esp_now_send(BASE_STATION_MAC, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
+        packet.samples[samplesInBatch++] = static_cast<uint16_t>(analogRead(EMG_PIN));
+        if (samplesInBatch == SAMPLES_PER_BATCH) {
+            packet.epoch = activeEpoch;
+            packet.sequence = nextSequence++;
+            esp_now_send(BASE_STATION_MAC, reinterpret_cast<uint8_t*>(&packet), sizeof(packet));
+            samplesInBatch = 0;
+        }
     }
 }
