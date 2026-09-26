@@ -12,12 +12,13 @@ from libemg.data_handler import OnlineDataHandler
 from dataclasses import dataclass
 
 try:  # Support both ``python src/script.py`` and package imports.
-    from .streamer import load_config
+    from .streamer import OnlineEMGStream, load_config
 except ImportError:
-    from streamer import load_config
+    from streamer import OnlineEMGStream, load_config
 
 
 SampleBatch = NDArray[np.float64]
+
 
 @dataclass
 class ChannelSummary:
@@ -33,22 +34,18 @@ class RestSummary:
 
 class MuscleActivationRecording:
     """Collect samples from ``get_online_handler`` while active.
-
-    Pass the ``OnlineDataHandler`` returned by the app's ``get_online_handler``.
-    The background collector uses its
-    ``get_data`` method and tracks the stream's cumulative sample count so each
-    sample is added once.
     """
 
     def __init__(
         self,
-        online_handler: OnlineDataHandler,
+        online_handler: OnlineEMGStream,
         *,
         poll_interval_s: float = 0.01,
     ) -> None:
         if poll_interval_s <= 0:
             raise ValueError("poll_interval_s must be greater than zero")
         self._handler = online_handler
+        self._stream = online_handler
         config = load_config()
         self._channel_names = tuple(config.sensor_names)
         self._missing_value = config.missing_value
@@ -62,7 +59,6 @@ class MuscleActivationRecording:
         self._started_at: float | None = None
         self._duration_s = 0.0
         self._collector_error: Exception | None = None
-        self._last_stream_count = 0
 
     @property
     def is_recording(self) -> bool:
@@ -73,8 +69,7 @@ class MuscleActivationRecording:
         """Begin collecting new samples; starting twice raises ``RuntimeError``."""
         if self._recording_active:
             raise RuntimeError("A recording is already in progress; call stop() first")
-        _, counts = self._handler.get_data(N=0, filter=False)
-        self._last_stream_count = int(counts.get("emg", 0))
+        self._stream.reset()
         self._recorded_batches = []
         self._last_recording = None
         self._channel_count = None
@@ -149,23 +144,13 @@ class MuscleActivationRecording:
     def _collect(self) -> None:
         while not self._stop_event.is_set():
             try:
-                _, counts = self._handler.get_data(N=0, filter=False)
-                stream_count = int(counts.get("emg", 0))
-                new_count = stream_count - self._last_stream_count
-                if new_count > 0:
-                    data, _ = self._handler.get_data(N=new_count, filter=False)
-                    batch = np.asarray(data["emg"], dtype=np.float64)
-                    if batch.ndim == 1:
-                        batch = batch.reshape(1, -1)
-                    if batch.ndim != 2:
-                        raise ValueError("OnlineDataHandler returned EMG data with an invalid shape")
-                    if batch.shape[0] > 0:
-                        if self._channel_count is None:
-                            self._channel_count = batch.shape[1]
-                        elif batch.shape[1] != self._channel_count:
-                            raise ValueError("OnlineDataHandler changed channel count during recording")
-                        self._recorded_batches.append(batch.copy())
-                    self._last_stream_count = stream_count
+                batch = self._stream.read_new_samples()
+                if batch.shape[0] > 0:
+                    if self._channel_count is None:
+                        self._channel_count = batch.shape[1]
+                    elif batch.shape[1] != self._channel_count:
+                        raise ValueError("OnlineDataHandler changed channel count during recording")
+                    self._recorded_batches.append(batch.copy())
             except Exception as exc:
                 self._collector_error = exc
                 self._stop_event.set()
