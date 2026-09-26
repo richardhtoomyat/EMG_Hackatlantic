@@ -9,6 +9,7 @@ import atexit
 import asyncio
 import multiprocessing as mp
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 import time
 from typing import Any
@@ -24,31 +25,56 @@ from libemg.data_handler import OnlineDataHandler
 from libemg.shared_memory_manager import SharedMemoryManager
 
 
-APP_DIR: Path = Path(__file__).resolve().parents[1]
-with (APP_DIR / "config.yml").open("r", encoding="utf-8") as config_file:
-    CONFIG: dict[str, Any] = yaml.safe_load(config_file)
-
-BLE_CONFIG: dict[str, Any] = CONFIG["ble"]
-SENSOR_NAMES: list[str] = BLE_CONFIG["sensor_names"]
-CHARACTERISTIC_UUID: str = BLE_CONFIG["characteristic_uuid"]
-MISSING_VALUE: float = float(BLE_CONFIG["missing_value"])
-CHANNEL_STALE_AFTER_S: float = float(BLE_CONFIG["channel_stale_after_ms"]) / 1000.0
-RECONNECT_DELAY_S: float = float(BLE_CONFIG["reconnect_delay_s"])
-NUM_CHANNELS: int = len(SENSOR_NAMES)
 BUFFER_LENGTH: int = 2000
 
-if not SENSOR_NAMES:
-    raise ValueError("Configure at least one BLE sensor name in app/config.yml")
-if len(set(SENSOR_NAMES)) != NUM_CHANNELS:
-    raise ValueError("BLE sensor names in app/config.yml must be unique")
+
+@dataclass(frozen=True)
+class StreamerConfig:
+    sensor_names: tuple[str, ...]
+    characteristic_uuid: str
+    missing_value: float
+    channel_stale_after_s: float
+    reconnect_delay_s: float
+
+    @property
+    def num_channels(self) -> int:
+        return len(self.sensor_names)
 
 
-def _append_sample(smm: SharedMemoryManager, sample: Sequence[float]) -> None:
+def load_config(path: Path | None = None) -> StreamerConfig:
+    """Read and validate BLE settings when the streamer is started."""
+    config_path = path or Path(__file__).resolve().parents[1] / "config.yml"
+    with config_path.open("r", encoding="utf-8") as config_file:
+        raw: dict[str, Any] = yaml.safe_load(config_file) or {}
+
+    try:
+        ble: dict[str, Any] = raw["ble"]
+        names = tuple(ble["sensor_names"])
+        config = StreamerConfig(
+            sensor_names=names,
+            characteristic_uuid=str(ble["characteristic_uuid"]),
+            missing_value=float(ble["missing_value"]),
+            channel_stale_after_s=float(ble["channel_stale_after_ms"]) / 1000.0,
+            reconnect_delay_s=float(ble["reconnect_delay_s"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid BLE configuration in {config_path}: {exc}") from exc
+
+    if not config.sensor_names or any(not isinstance(name, str) or not name.strip() for name in config.sensor_names):
+        raise ValueError("Configure at least one non-empty BLE sensor name in app/config.yml")
+    if len(set(config.sensor_names)) != config.num_channels:
+        raise ValueError("BLE sensor names in app/config.yml must be unique")
+    if config.channel_stale_after_s < 0 or config.reconnect_delay_s < 0:
+        raise ValueError("BLE timing values must be non-negative")
+    return config
+
+
+def _append_sample(smm: SharedMemoryManager, sample: Sequence[float], num_channels: int) -> None:
     """Append one sample row to LibEMG shared memory."""
-    if len(sample) != NUM_CHANNELS:
-        raise ValueError(f"Expected {NUM_CHANNELS} channels, received {len(sample)}")
+    if len(sample) != num_channels:
+        raise ValueError(f"Expected {num_channels} channels, received {len(sample)}")
 
-    row: NDArray[np.float64] = np.asarray(sample, dtype=np.float64).reshape(1, NUM_CHANNELS)
+    row: NDArray[np.float64] = np.asarray(sample, dtype=np.float64).reshape(1, num_channels)
 
     def shift_buffer(buffer: NDArray[np.float64]) -> NDArray[np.float64]:
         return np.concatenate((buffer[1:, :], row), axis=0)
@@ -60,10 +86,10 @@ def _append_sample(smm: SharedMemoryManager, sample: Sequence[float]) -> None:
     smm.modify_variable("emg_count", increment_count)
 
 
-async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
-    sensor_slots: dict[str, int] = {name: index for index, name in enumerate(SENSOR_NAMES)}
-    latest_values: list[float] = [MISSING_VALUE] * NUM_CHANNELS
-    latest_times: list[float] = [0.0] * NUM_CHANNELS
+async def _run_ble_streamer(smm: SharedMemoryManager, config: StreamerConfig) -> None:
+    sensor_slots: dict[str, int] = {name: index for index, name in enumerate(config.sensor_names)}
+    latest_values: list[float] = [config.missing_value] * config.num_channels
+    latest_times: list[float] = [0.0] * config.num_channels
     primary_sensor: str | None = None
 
     # Keep scanning while connected so a later sensor can join automatically.
@@ -110,11 +136,11 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
                 row: list[float] = [
                     latest_values[index]
                     if latest_times[index] > 0.0
-                    and now - latest_times[index] <= CHANNEL_STALE_AFTER_S
-                    else MISSING_VALUE
-                    for index in range(NUM_CHANNELS)
+                    and now - latest_times[index] <= config.channel_stale_after_s
+                    else config.missing_value
+                    for index in range(config.num_channels)
                 ]
-                _append_sample(smm, row)
+                _append_sample(smm, row, config.num_channels)
 
         return on_notification
 
@@ -124,7 +150,7 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
         try:
             async with BleakClient(device) as client:
                 await client.start_notify(
-                    CHARACTERISTIC_UUID,
+                    config.characteristic_uuid,
                     make_notification_callback(name),
                 )
                 print(f"[BLE] Notifications enabled for {name}", flush=True)
@@ -139,7 +165,8 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
             # Allow the peripheral to resume advertising before retrying.
             if primary_sensor == name:
                 primary_sensor = None
-            await asyncio.sleep(RECONNECT_DELAY_S)
+            if not asyncio.current_task().cancelling():
+                await asyncio.sleep(config.reconnect_delay_s)
             connecting.discard(name)
 
     def try_connect_unconnected(sensor: str, device: BLEDevice) -> None:
@@ -154,76 +181,82 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
 
     async with BleakScanner(detection_callback=on_advertisement):
         print(
-            f"[BLE] Scanning for {', '.join(SENSOR_NAMES)}; "
-            f"characteristic {CHARACTERISTIC_UUID}",
+            f"[BLE] Scanning for {', '.join(config.sensor_names)}; "
+            f"characteristic {config.characteristic_uuid}",
             flush=True,
         )
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            for task in connection_tasks:
+                task.cancel()
+            if connection_tasks:
+                await asyncio.gather(*connection_tasks, return_exceptions=True)
 
 
-def _ble_streamer_worker(shared_memory_items: list[list[Any]]) -> None:
+def _ble_streamer_worker(shared_memory_items: list[list[Any]], config: StreamerConfig) -> None:
     """Own the BLE connections and append readings to LibEMG memory."""
     smm = SharedMemoryManager()
     for item in shared_memory_items:
         smm.create_variable(*item)
-    asyncio.run(_run_ble_streamer(smm))
+    asyncio.run(_run_ble_streamer(smm, config))
 
 
-_streamer_process: mp.Process | None = None
-_online_handler: OnlineDataHandler | None = None
-_shared_memory_items: list[list[Any]] | None = None
+class StreamerManager:
+    """Own the LibEMG handler and the process that fills its shared memory."""
+
+    def __init__(self) -> None:
+        self.process: mp.Process | None = None
+        self.handler: OnlineDataHandler | None = None
+        self.config: StreamerConfig | None = None
+
+    def get_online_handler(self, channel_mask: Sequence[int] | None = None) -> OnlineDataHandler:
+        config = self.config or load_config()
+        normalized_mask = self._validate_channel_mask(channel_mask, config.num_channels)
+        if self.handler is None:
+            shared_memory_items: list[list[Any]] = [
+                ["emg", (BUFFER_LENGTH, config.num_channels), np.double, mp.Lock()],
+                ["emg_count", (1, 1), np.int32, mp.Lock()],
+            ]
+            self.process = mp.Process(
+                target=_ble_streamer_worker,
+                args=(shared_memory_items, config),
+                daemon=True,
+                name="myoware-ble-streamer",
+            )
+            self.process.start()
+            self.handler = OnlineDataHandler(
+                shared_memory_items=shared_memory_items,
+                channel_mask=normalized_mask,
+            )
+            self.config = config
+        elif normalized_mask is not None:
+            self.handler.install_channel_mask(normalized_mask)
+        return self.handler
+
+    @staticmethod
+    def _validate_channel_mask(mask: Sequence[int] | None, num_channels: int) -> list[int] | None:
+        if mask is None:
+            return None
+        normalized = list(mask)
+        if (not normalized or any(type(ch) is not int or ch < 0 or ch >= num_channels for ch in normalized)
+                or len(set(normalized)) != len(normalized)):
+            raise ValueError(f"channel_mask must contain unique indices from 0 to {num_channels - 1}")
+        return normalized
+
+    def cleanup(self) -> None:
+        if self.process is not None and self.process.is_alive():
+            self.process.terminate()
+            self.process.join(timeout=2)
 
 
-def _cleanup_streamer() -> None:
-    if _streamer_process is not None and _streamer_process.is_alive():
-        _streamer_process.terminate()
-        _streamer_process.join(timeout=2)
+_streamer_manager = StreamerManager()
+atexit.register(_streamer_manager.cleanup)
 
 
-def get_online_handler(
-    channel_mask: Sequence[int] | None = None,
-) -> OnlineDataHandler:
-    """Start the BLE streamer and return a LibEMG online data handler.
-
-    Configure sensor names in ``app/config.yml`` in column order. Add
-    ``MyoWareSensorR`` after ``MyoWareSensorL`` when the second shield is ready.
-    """
-    global _streamer_process, _online_handler, _shared_memory_items
-
-    # ensure valid channel mask
-    normalized_mask: list[int] | None = None
-    if channel_mask is not None:
-        normalized_mask = list(channel_mask)
-        if (
-            not normalized_mask
-            or any(type(channel) is not int or channel < 0 or channel >= NUM_CHANNELS
-                   for channel in normalized_mask)
-            or len(set(normalized_mask)) != len(normalized_mask)
-        ):
-            raise ValueError(f"channel_mask must contain unique indices from 0 to {NUM_CHANNELS - 1}")
-
-    if _online_handler is None:
-        _shared_memory_items = [
-            ["emg", (BUFFER_LENGTH, NUM_CHANNELS), np.double, mp.Lock()],
-            ["emg_count", (1, 1), np.int32, mp.Lock()],
-        ]
-        _streamer_process = mp.Process(
-            target=_ble_streamer_worker,
-            args=(_shared_memory_items,),
-            daemon=True,
-            name="myoware-ble-streamer",
-        )
-        _streamer_process.start()
-
-        _online_handler = OnlineDataHandler(
-            shared_memory_items=_shared_memory_items,
-            channel_mask=normalized_mask,
-        )
-        atexit.register(_cleanup_streamer)
-    elif normalized_mask is not None:
-        _online_handler.install_channel_mask(normalized_mask)
-
-    return _online_handler
+def get_online_handler(channel_mask: Sequence[int] | None = None) -> OnlineDataHandler:
+    """Start the BLE streamer and return a LibEMG online data handler."""
+    return _streamer_manager.get_online_handler(channel_mask)
 
 
 if __name__ == "__main__":
