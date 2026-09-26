@@ -1,0 +1,104 @@
+/**
+ * Shared types for activateMyo.
+ *
+ * Everything in `mockData.ts` conforms to these shapes. When real sensor
+ * data comes online, the plan is:
+ *   1. Replace the hardcoded exports in mockData.ts with functions that
+ *      hit your API / Supabase / WebSocket (same shapes, same names).
+ *   2. Nothing in components/ or pages/ needs to change, since they only
+ *      import from `data/mockData.ts` (or whatever you rename it to,
+ *      e.g. `data/liveData.ts`) and never construct this data themselves.
+ */
+
+export type MuscleState = "primary" | "secondary" | "untargeted";
+
+/** One entry per colorable region in the body-map SVG (see BodyMap.tsx). */
+export type MuscleId =
+  | "f-traps-l" | "f-traps-r"
+  | "f-delt-l" | "f-delt-r"
+  | "f-pec-l" | "f-pec-r"
+  | "f-bicep-l" | "f-bicep-r"
+  | "f-forearm-l" | "f-forearm-r"
+  | "f-abs"
+  | "f-oblique-l" | "f-oblique-r"
+  | "f-quad-l" | "f-quad-r"
+  | "b-traps"
+  | "b-delt-l" | "b-delt-r"
+  | "b-lat-l" | "b-lat-r"
+  | "b-tricep-l" | "b-tricep-r"
+  | "b-forearm-l" | "b-forearm-r"
+  | "b-lowerback"
+  | "b-ham-l" | "b-ham-r"
+  | "b-glute-l" | "b-glute-r"
+  | "b-calf-l" | "b-calf-r";
+
+export type MuscleMap = Partial<Record<MuscleId, MuscleState>>;
+
+/** An exercise's primary/secondary muscle recruitment (Strava-style weighting). */
+export interface ExerciseDefinition {
+  name: string;
+  primary: MuscleId[];
+  secondary: MuscleId[];
+}
+
+/** A single completed set within a session. */
+export interface SetRecord {
+  setNumber: number;
+  reps: number;
+  timeUnderTensionSec: number;
+  peakActivationPct: number;
+  avgActivationPct: number;
+}
+
+/** Per-muscle activation percentage recorded for a session (drives L/R imbalance). */
+export interface MuscleActivation {
+  muscle: string; // display label, e.g. "Left Bicep"
+  pct: number;
+}
+
+/** A full logged workout session. */
+export interface Session {
+  id: string;
+  exerciseName: string;
+  date: string; // ISO date
+  timeLabel: string; // "2:14 PM"
+  sets: SetRecord[];
+  totalReps: number;
+  workoutVolume: number;
+  totalTimeUnderTensionSec: number;
+  avgPeakActivationPct: number;
+  imbalancePct: number;
+  activationScore: number; // 0-100 KPI
+  muscleActivations: MuscleActivation[];
+  coachNote?: { coachName: string; message: string };
+}
+
+/** One day's rollup for the "This Week" training-consistency chart. */
+export interface DaySummary {
+  label: string; // single-letter weekday label
+  date: string; // ISO date
+  avgActivationScore: number; // 0 if rest day
+  trained: boolean;
+  isToday?: boolean;
+}
+
+export interface AthleteProfile {
+  name: string;
+  email: string;
+  heightLabel: string;
+  weightLabel: string;
+  age: number;
+  sensorsConnected: boolean;
+}
+
+export interface CoachLink {
+  coachName: string;
+  linkedSince: string;
+  shareCode: string;
+}
+
+export interface ReadinessSnapshot {
+  score: number; // 0-100
+  label: string; // "Recovered", "Fatigued", etc.
+  description: string;
+}
