@@ -26,6 +26,11 @@ import type {
 type ProfileRow = {
   id: string;
   name: string | null;
+  // Added by supabase/signup_profiles.sql; may be absent on older schemas.
+  first_name?: string | null;
+  last_name?: string | null;
+  avatar_url?: string | null;
+  email?: string | null;
   role: string | null;
   height_cm: number | null;
   weight_kg: number | null;
@@ -136,7 +141,6 @@ function parseMuscleMap(v: unknown): MuscleMap | undefined {
   return buildMapFromPercentages(musclePct(Object.fromEntries(entries)) as Partial<Record<MuscleId, number>>);
 }
 
-const PROFILE_COLS = "id,name,role,height_cm,weight_kg,age,sensors_connected";
 
 /** What a signed-in user sees before (or without) any rows: their identity, no workouts. */
 export function emptyAppData(fallback: AppData, user: User): AppData {
@@ -151,11 +155,14 @@ export function emptyAppData(fallback: AppData, user: User): AppData {
       isToday: i === 0,
     });
   }
+  // Google puts full_name/name and avatar_url/picture in user_metadata.
+  const meta = (user.user_metadata ?? {}) as Record<string, string | undefined>;
   return {
     ...fallback,
     ATHLETE: {
-      name: user.email?.split("@")[0] ?? "Athlete",
+      name: meta.full_name || meta.name || user.email?.split("@")[0] || "Athlete",
       email: user.email ?? "",
+      avatarUrl: meta.avatar_url || meta.picture || undefined,
       heightLabel: "—",
       weightLabel: "—",
       age: 0,
@@ -175,14 +182,18 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
   if (!supabase) return fallback;
   const data = emptyAppData(fallback, user);
 
-  const profileRes = await supabase.from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
+  // select("*") so the optional first_name/last_name/avatar_url/email columns are read when present.
+  const profileRes = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   if (profileRes.error) throw profileRes.error;
   const profile = profileRes.data as ProfileRow | null;
   if (!profile) console.warn(`[activateMyo] no profiles row for user ${user.id}`);
 
+  // data.ATHLETE already holds the Google/user_metadata name + picture as fallbacks.
+  const fullName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ");
   data.ATHLETE = {
-    name: profile?.name || data.ATHLETE.name,
-    email: user.email ?? "",
+    name: fullName || profile?.name || data.ATHLETE.name,
+    email: profile?.email || user.email || "",
+    avatarUrl: profile?.avatar_url || data.ATHLETE.avatarUrl,
     heightLabel: heightLabel(profile?.height_cm ?? null),
     weightLabel: weightLabel(profile?.weight_kg ?? null),
     age: profile?.age ?? 0,

@@ -87,6 +87,8 @@ export interface DaySummary {
 export interface AthleteProfile {
   name: string;
   email: string;
+  /** Profile picture URL (e.g. from Google). */
+  avatarUrl?: string;
   heightLabel: string;
   weightLabel: string;
   age: number;

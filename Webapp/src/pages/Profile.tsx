@@ -16,7 +16,17 @@ export default function Profile() {
       <h2 className="font-serif font-light text-[22px]">Profile</h2>
 
       <div className="bg-surface rounded-2xl p-5 text-center mt-3">
-        <div className="w-15 h-15 rounded-full bg-track mx-auto mb-3" style={{ width: 60, height: 60 }} />
+        {ATHLETE.avatarUrl ? (
+          <img
+            src={ATHLETE.avatarUrl}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="rounded-full mx-auto mb-3 object-cover"
+            style={{ width: 60, height: 60 }}
+          />
+        ) : (
+          <div className="rounded-full bg-track mx-auto mb-3" style={{ width: 60, height: 60 }} />
+        )}
         <div className="text-lg font-medium">{ATHLETE.name}</div>
         {ATHLETE.email && <div className="text-[13px] text-muted">{ATHLETE.email}</div>}
       </div>

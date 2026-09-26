@@ -1,4 +1,5 @@
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth/authContext";
 import Layout from "./components/Layout";
 import { AuthProvider } from "./auth/AuthProvider";
 import RequireAuth from "./auth/RequireAuth";
@@ -32,9 +33,20 @@ export default function App() {
               <Route path="/coach" element={<Coach />} />
               <Route path="/profile" element={<Profile />} />
             </Route>
+            {/* e.g. "#access_token=…" while supabase-js finishes a Google / email-link sign-in */}
+            <Route path="*" element={<AuthRedirect />} />
           </Routes>
         </HashRouter>
       </DataProvider>
     </AuthProvider>
   );
+}
+
+/** Unknown route: wait for auth to settle, then go home (RequireAuth sends signed-out users to /login). */
+function AuthRedirect() {
+  const { loading } = useAuth();
+  if (loading) {
+    return <div className="min-h-screen bg-bg flex items-center justify-center text-muted text-sm">Signing in…</div>;
+  }
+  return <Navigate to="/" replace />;
 }
