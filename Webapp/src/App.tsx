@@ -58,7 +58,7 @@ export default function App() {
 function AuthRedirect() {
   const { loading } = useAuth();
   if (loading) {
-    return <div className="min-h-screen bg-bg flex items-center justify-center text-muted text-sm">Signing in…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-muted text-sm">Signing in…</div>;
   }
   return <Navigate to="/" replace />;
 }

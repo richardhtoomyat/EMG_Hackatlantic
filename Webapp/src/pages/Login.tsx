@@ -60,7 +60,7 @@ export default function Login() {
     `flex-1 h-10 rounded-full text-sm font-medium ${mode === m ? "bg-surface text-ink" : "text-muted"}`;
 
   return (
-    <div className="max-w-[420px] mx-auto bg-bg min-h-screen flex flex-col justify-center p-6">
+    <div className="max-w-[420px] mx-auto min-h-screen flex flex-col justify-center p-6">
       <div className="font-serif font-light text-[34px] text-center">
         activate<span className="text-accent font-medium">Myo</span>
       </div>

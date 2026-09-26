@@ -4,9 +4,9 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "#0D1014",
-        surface: "#161A20",
-        deep: "#11151A",
+        bg: "#0B0E15",
+        surface: "rgba(26, 30, 42, 0.68)",
+        deep: "rgba(18, 21, 30, 0.8)",
         line: "#262C35",
         track: "#1E232B",
         ink: "#ECEAE4",
