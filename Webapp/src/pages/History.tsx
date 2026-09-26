@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { StatRows } from "../components/StatGrid";
-import { SESSION_HISTORY, WEEKLY_TRENDS } from "../data/mockData";
+import { useAppData } from "../data/dataContext";
 
 export default function History() {
+  const { SESSION_HISTORY, WEEKLY_TRENDS } = useAppData();
   return (
     <div className="flex-grow flex flex-col">
       <h2 className="font-serif font-light text-[22px] mb-3">This Week</h2>

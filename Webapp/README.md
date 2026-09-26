@@ -31,6 +31,34 @@ npm run build      # type-check + production build to dist/
 npm run preview    # serve the production build locally
 ```
 
+## Supabase setup
+
+The app reads the project's existing Supabase tables — `profiles`,
+`coach_links`, `sessions`, `sets` — when these env vars are set, and falls back
+to the mock data in `src/data/mockData.ts` when they aren't (or when no rows
+are readable).
+
+1. **Env vars** — `cp .env.example .env.local` and fill in `VITE_SUPABASE_URL`
+   and `VITE_SUPABASE_ANON_KEY` (Project Settings → API). Never use the
+   `service_role` key in the front-end. On **Vercel**, add the same two under
+   Project → Settings → Environment Variables and **redeploy** (Vite bakes env
+   vars in at build time).
+2. **Read access** — without login the site uses the anon key, so RLS must
+   allow anon reads. For the demo, run `supabase/demo_read_access.sql`
+   (read-only policies).
+3. **Demo data (optional)** — `supabase/seed_demo.sql` fills the tables with
+   data matching the prototype.
+
+How the tables map onto the UI (`src/data/supabaseData.ts`):
+
+| UI | Source |
+|---|---|
+| Profile | first `profiles` row with `role = 'athlete'` (or `VITE_ATHLETE_ID`) |
+| Coach | latest `coach_links` row for that athlete + coach's `profiles.name` |
+| Session / History / This Week / Today | `sessions` + their `sets` (reps, TUT, peak, `contraction_pct` as avg activation, `muscle_pct` per muscle → L/R imbalance) |
+| Session body map | `sessions.muscle_map` (`{"f-bicep-l": "primary" \| 0-100, …}`), else the exercise definition |
+| Readiness, live Workout screen, fatigue | not stored yet — mock data |
+
 ## Pages
 
 | Route       | Screen                                                          |
@@ -106,7 +134,6 @@ Typeface: **Newsreader** (serif, display/headings) + **Manrope** (sans, body).
 - [ ] Custom LibEMG streamer for the MyoWare 2.0 + ESP32 rig, streaming RMS
       (tension) and MDF (fatigue) over shared memory
 - [ ] FastAPI + WebSocket hub broadcasting ~20 updates/sec to the app
-- [ ] Supabase for auth, athlete/coach linking, and session-level history
-      (not raw high-frequency signal)
-- [ ] Swap `src/data/mockData.ts` for a live data layer per the architecture
-      notes above
+- [x] Supabase for session-level history (not raw high-frequency signal)
+- [ ] Supabase Auth + athlete/coach linking
+- [x] Live data layer (`DataProvider` + `useAppData()`), mock data as fallback

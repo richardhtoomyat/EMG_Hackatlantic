@@ -70,6 +70,8 @@ export interface Session {
   imbalancePct: number;
   activationScore: number; // 0-100 KPI
   muscleActivations: MuscleActivation[];
+  /** Body-map states recorded for this session; falls back to the exercise definition. */
+  muscleMap?: MuscleMap;
   coachNote?: { coachName: string; message: string };
 }
 
@@ -101,4 +103,54 @@ export interface ReadinessSnapshot {
   score: number; // 0-100
   label: string; // "Recovered", "Fatigued", etc.
   description: string;
+}
+
+/** One row in the History list. */
+export interface SessionHistoryItem {
+  id: string;
+  exerciseName: string;
+  date: string; // ISO date
+  dateLabel: string; // "Sep 26"
+  reps: number;
+  score: number;
+}
+
+/** Today's aggregate metrics (across all of today's sessions). */
+export interface TodayMetrics {
+  avgActivationPct: number;
+  bestImbalancePct: number;
+  totalVolumeReps: number;
+  fatigueLabel: string;
+}
+
+/** The set currently in progress (Workout screen). */
+export interface LiveSet {
+  exerciseName: string;
+  leftPct: number;
+  rightPct: number;
+  imbalancePct: number;
+  reps: number;
+  timeUnderTension: string; // "2:14"
+  peakActivationPct: number;
+  fatigueLabel: string;
+}
+
+export interface WeeklyTrends {
+  avgImbalancePct: number;
+  bestSessionScore: number;
+  sessionsCompleted: number;
+}
+
+/** Everything the pages read, bundled — provided by data/DataProvider.tsx. */
+export interface AppData {
+  ATHLETE: AthleteProfile;
+  COACH_LINK: CoachLink;
+  READINESS: ReadinessSnapshot;
+  WEEK_SUMMARY: DaySummary[];
+  WEEKLY_READINESS_TREND_PCT: number;
+  TODAY_METRICS: TodayMetrics;
+  CURRENT_SESSION: Session;
+  LIVE_SET: LiveSet;
+  SESSION_HISTORY: SessionHistoryItem[];
+  WEEKLY_TRENDS: WeeklyTrends;
 }
