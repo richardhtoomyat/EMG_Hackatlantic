@@ -9,7 +9,7 @@
 #endif
 
 static EmgPacket packet;
-static const int EMG_PIN = 34; // MyoWare Wireless Shield onboard ADC1 input
+static const int EMG_PIN = 39; // MyoWare Wireless Shield onboard ADC1 input
 static unsigned long lastSampleMicros = 0;
 static volatile uint16_t activeEpoch = 0;
 static volatile uint16_t nextSequence = 0;

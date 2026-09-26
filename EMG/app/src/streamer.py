@@ -49,15 +49,8 @@ def _serial_streamer_worker(serial_port, baud_rate, shared_memory_items):
                     if len(fields) != NUM_CHANNELS:
                         continue  # Ignore firmware startup/status messages.
                     sample = np.asarray([int(value) for value in fields], dtype=np.double)
+                    print(sample)
                 except (UnicodeDecodeError, ValueError):
-                    continue
-
-                # The firmware uses -1 for an inactive channel. Keep a stable
-                # two-channel array for LibEMG and represent that channel at
-                # the ADC's resting midpoint instead of injecting -1 as EMG.
-                if np.any(sample == MISSING_VALUE):
-                    sample[sample == MISSING_VALUE] = ADC_CENTER_VALUE
-                if np.any((sample < 0) | (sample > 4095)):
                     continue
 
                 smm.modify_variable(
@@ -84,7 +77,7 @@ def _cleanup_streamer():
 
 
 def get_online_handler(channel_mask=None):
-    """Start the serial streamer once and return a LibEMG data handler.
+    """Start the serial streamer and return a LibEMG data handler, if they do not exist already.
 
     ``channel_mask`` may be ``[0]``, ``[1]``, or ``[0, 1]``. Use the channel
     indices corresponding to the active sensor(s) when training/classifying.
