@@ -64,7 +64,7 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
     sensor_slots: dict[str, int] = {name: index for index, name in enumerate(SENSOR_NAMES)}
     latest_values: list[float] = [MISSING_VALUE] * NUM_CHANNELS
     latest_times: list[float] = [0.0] * NUM_CHANNELS
-    primary_sensor: str = SENSOR_NAMES[0]
+    primary_sensor: str | None = None
 
     # Keep scanning while connected so a later sensor can join automatically.
     discovery_queue: asyncio.Queue[tuple[BLEDevice, str]] = asyncio.Queue()
@@ -86,6 +86,7 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
             _characteristic: BleakGATTCharacteristic,
             data: bytearray,
         ) -> None:
+            nonlocal primary_sensor
             text: str = bytes(data).decode("utf-8", errors="replace").strip("\x00\r\n \t")
             if not text:
                 return
@@ -100,8 +101,13 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
             latest_values[channel] = value
             latest_times[channel] = now
 
-            # One output row per primary sensor notification, avoiding
-            # duplicate rows when notifications from two sensors interleave.
+            # Let whichever configured sensor starts streaming first drive
+            # output rows, so either sensor works when used by itself.
+            if primary_sensor is None:
+                primary_sensor = name
+
+            # One output row per primary notification avoids duplicate rows
+            # when notifications from two sensors interleave.
             if name == primary_sensor:
                 row: list[float] = [
                     latest_values[index]
@@ -115,6 +121,7 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
         return on_notification
 
     async def connect_and_stream(device: BLEDevice, name: str) -> None:
+        nonlocal primary_sensor
         print(f"[BLE] Connecting to {name} ({device.address})", flush=True)
         try:
             async with BleakClient(device) as client:
@@ -132,6 +139,8 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
             print(f"[BLE] {name} connection failed: {exc}", flush=True)
         finally:
             # Allow the peripheral to resume advertising before retrying.
+            if primary_sensor == name:
+                primary_sensor = None
             await asyncio.sleep(RECONNECT_DELAY_S)
             connecting.discard(name)
 
