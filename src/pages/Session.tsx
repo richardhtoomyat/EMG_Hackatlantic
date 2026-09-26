@@ -8,7 +8,7 @@ import { muscleMapForExercise } from "../lib/muscleMap";
 
 export default function Session() {
   const s = useAppData().CURRENT_SESSION;
-  const muscles = muscleMapForExercise(s.exerciseName);
+  const muscles = s.muscleMap ?? muscleMapForExercise(s.exerciseName);
 
   return (
     <div className="flex-grow flex flex-col">

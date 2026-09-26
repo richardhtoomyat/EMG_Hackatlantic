@@ -6,8 +6,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  *
  *   VITE_SUPABASE_URL       = https://<project-ref>.supabase.co
  *   VITE_SUPABASE_ANON_KEY  = <anon / publishable key>
- *   VITE_ATHLETE_ID         = (optional) athlete uuid to show; defaults to
- *                             the first athlete in the table
+ *   VITE_ATHLETE_ID         = (optional) profiles.id to show; defaults to
+ *                             the first profile with role "athlete"
  *
  * If the URL/key are missing, `supabase` is null and the app keeps running
  * on the mock data in data/mockData.ts.

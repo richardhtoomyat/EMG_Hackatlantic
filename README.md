@@ -33,26 +33,31 @@ npm run preview    # serve the production build locally
 
 ## Supabase setup
 
-The app reads from Supabase when these env vars are set, and falls back to the
-mock data in `src/data/mockData.ts` when they aren't (or if a request fails).
+The app reads the project's existing Supabase tables — `profiles`,
+`coach_links`, `sessions`, `sets` — when these env vars are set, and falls back
+to the mock data in `src/data/mockData.ts` when they aren't (or when no rows
+are readable).
 
-1. **Create the tables** — Supabase dashboard → SQL Editor → paste and run
-   `supabase/schema.sql`, then `supabase/seed.sql` (demo athlete + sessions).
-2. **Local dev** — `cp .env.example .env.local` and fill in
-   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from
-   Project Settings → API. Never use the `service_role` key in the front-end.
-3. **Vercel** — Project → Settings → Environment Variables → add the same
-   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (Production + Preview), then
-   **redeploy** (Vite bakes env vars in at build time).
+1. **Env vars** — `cp .env.example .env.local` and fill in `VITE_SUPABASE_URL`
+   and `VITE_SUPABASE_ANON_KEY` (Project Settings → API). Never use the
+   `service_role` key in the front-end. On **Vercel**, add the same two under
+   Project → Settings → Environment Variables and **redeploy** (Vite bakes env
+   vars in at build time).
+2. **Read access** — without login the site uses the anon key, so RLS must
+   allow anon reads. For the demo, run `supabase/demo_read_access.sql`
+   (read-only policies).
+3. **Demo data (optional)** — `supabase/seed_demo.sql` fills the tables with
+   data matching the prototype.
 
-Data flow: `src/lib/supabase.ts` (client) → `src/data/supabaseData.ts` (queries
-+ mapping to the types in `types.ts`) → `src/data/DataProvider.tsx` (context) →
-pages call `useAppData()`. The Workout screen subscribes to the `live_sets`
-table via Supabase Realtime, so the FastAPI hub can upsert that row with the
-service-role key and the rings update live.
+How the tables map onto the UI (`src/data/supabaseData.ts`):
 
-RLS is currently **public read-only** (demo mode, no login). Swap the policies
-in `schema.sql` for `auth.uid()`-based ones once Supabase Auth is added.
+| UI | Source |
+|---|---|
+| Profile | first `profiles` row with `role = 'athlete'` (or `VITE_ATHLETE_ID`) |
+| Coach | latest `coach_links` row for that athlete + coach's `profiles.name` |
+| Session / History / This Week / Today | `sessions` + their `sets` (reps, TUT, peak, `contraction_pct` as avg activation, `muscle_pct` per muscle → L/R imbalance) |
+| Session body map | `sessions.muscle_map` (`{"f-bicep-l": "primary" \| 0-100, …}`), else the exercise definition |
+| Readiness, live Workout screen, fatigue | not stored yet — mock data |
 
 ## Pages
 

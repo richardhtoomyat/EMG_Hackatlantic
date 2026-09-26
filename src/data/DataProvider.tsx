@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { DataContext, MOCK_DATA, type DataSource } from "./dataContext";
-import { fetchAppData, subscribeLiveSet } from "./supabaseData";
+import { fetchAppData } from "./supabaseData";
 import type { AppData } from "./types";
 
 /**
@@ -14,7 +14,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    let unsubscribe = () => {};
 
     fetchAppData(MOCK_DATA)
       .then((result) => {
@@ -23,11 +22,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setSource("mock");
           return;
         }
-        setData(result.data);
+        setData(result);
         setSource("supabase");
-        unsubscribe = subscribeLiveSet(result.athleteId, (live) =>
-          setData((d) => ({ ...d, LIVE_SET: live }))
-        );
       })
       .catch((err) => {
         console.error("[activateMyo] Supabase load failed, using mock data:", err);
@@ -36,7 +32,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      unsubscribe();
     };
   }, []);
 

@@ -70,6 +70,8 @@ export interface Session {
   imbalancePct: number;
   activationScore: number; // 0-100 KPI
   muscleActivations: MuscleActivation[];
+  /** Body-map states recorded for this session; falls back to the exercise definition. */
+  muscleMap?: MuscleMap;
   coachNote?: { coachName: string; message: string };
 }
 
