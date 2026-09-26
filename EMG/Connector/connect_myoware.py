@@ -10,7 +10,7 @@ import asyncio
 from bleak import BleakClient, BleakScanner
 
 NAMES = [
-    "MyoWareSensorL",
+    "MyoWareSensorL", "MyoWareSensorR"
 ]
 CHARACTERISTIC_UUID = "f3a56edf-8f1e-4533-93bf-5601b2e91308"
 

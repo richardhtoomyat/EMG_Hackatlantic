@@ -1,9 +1,9 @@
-# config.yml
-serial:
-  port: "COM3"
-  baud_rate: 230400
+# BLE GATT settings for the stock MyoWare Wireless Shield firmware.
+ble:
+  sensor_names:
+    - MyoWareSensorL
+    - MyoWareSensorR
+  characteristic_uuid: "f3a56edf-8f1e-4533-93bf-5601b2e91308"
   missing_value: -1
-  max_channel: 2
-
-libemg:
-  port: 12346
+  channel_stale_after_ms: 100
+  reconnect_delay_s: 2
