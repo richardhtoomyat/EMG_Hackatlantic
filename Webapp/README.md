@@ -45,14 +45,21 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    vars in at build time — a build without them silently falls back to demo
    mode).
 2. **Read access** — run `supabase/demo_read_access.sql` (read-only policies).
-3. **Sign up** — run `supabase/signup_profiles.sql`. It adds a trigger that
-   creates a `profiles` row (name + athlete/coach role from the Sign up form)
-   for every new user, and backfills existing users. In Supabase →
-   Authentication → URL Configuration, set **Site URL** to the Vercel URL so
-   confirmation emails link back to the site. (With "Confirm email" turned
-   off under Authentication → Providers → Email, new users are signed in
-   immediately.)
-4. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+3. **Sign up** — run `supabase/signup_profiles.sql` (safe to re-run). It adds
+   `first_name`, `last_name`, `avatar_url`, `email` to `profiles` and a
+   trigger that fills a `profiles` row for every new user — from the Sign up
+   form, or from Google (name, picture, email). In Supabase → Authentication
+   → URL Configuration set **Site URL** to the Vercel URL and add it (plus
+   `http://localhost:5173/` for dev) to **Redirect URLs**.
+   (With "Confirm email" off under Authentication → Providers → Email, new
+   email users are signed in immediately.)
+4. **Google sign-in** — in Google Cloud Console → APIs & Services →
+   Credentials, create an **OAuth client ID** (type *Web application*) with
+   authorized redirect URI
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client ID
+   and secret into Supabase → Authentication → Providers → **Google** and
+   enable it. No front-end config is needed.
+5. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
    with password `demo-password-123`, plus sessions/sets.
 
@@ -60,7 +67,7 @@ How the tables map onto the UI (`src/data/supabaseData.ts`):
 
 | UI | Source |
 |---|---|
-| Profile | signed-in user's `profiles` row + email from Supabase Auth |
+| Profile | signed-in user's `profiles` row (first/last name, picture, email); falls back to Google's `user_metadata` |
 | Coach | latest `coach_links` row (athletes: `athlete_id` = me; coaches: `coach_id` = me) + coach's `profiles.name` |
 | Session / History / This Week / Today | `sessions` + `sets` of the athlete (coaches see their linked athlete) |
 | Session body map | `sessions.muscle_map` (`{"f-bicep-l": "primary" \| 0-100, …}`), else the exercise definition |

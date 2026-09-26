@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { initialAuthError, supabase } from "../lib/supabase";
 import { AuthContext, type SignUpInput } from "./authContext";
 
 /**
@@ -29,13 +29,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error ? error.message : null;
   };
 
-  const signUp = async ({ name, email, password, role }: SignUpInput) => {
+  // Where Supabase sends the user back after Google / email confirmation.
+  // Must be listed in Supabase → Authentication → URL Configuration → Redirect URLs.
+  const redirectTo = () => window.location.origin + window.location.pathname;
+
+  const signInWithGoogle = async () => {
+    if (!supabase) return "Supabase is not configured";
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: redirectTo(), queryParams: { prompt: "select_account" } },
+    });
+    return error ? error.message : null;
+  };
+
+  const signUp = async ({ firstName, lastName, email, password, role }: SignUpInput) => {
     if (!supabase) return { error: "Supabase is not configured", needsConfirmation: false };
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       // Copied into public.profiles by the on-signup trigger (supabase/signup_profiles.sql).
-      options: { data: { name, role }, emailRedirectTo: window.location.origin + window.location.pathname },
+      options: {
+        data: { first_name: firstName, last_name: lastName, name: `${firstName} ${lastName}`.trim(), role },
+        emailRedirectTo: redirectTo(),
+      },
     });
     if (error) return { error: error.message, needsConfirmation: false };
     // Supabase returns an obfuscated user with no identities when the email is already registered.
@@ -54,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, enabled: !!supabase, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, enabled: !!supabase, signIn, signInWithGoogle, signUp, signOut, redirectError: initialAuthError }}>
       {children}
     </AuthContext.Provider>
   );
