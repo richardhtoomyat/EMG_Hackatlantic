@@ -4,12 +4,40 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
+html {
+  background: #0b0e15;
+}
+
 body,
 #root {
-  background: #0d1014;
+  background: transparent;
   margin: 0;
   min-height: 100%;
+}
+
+/*
+ * "Aurora" background: teal + violet glows on a dark base, on a fixed layer
+ * behind the app so it stays put while content scrolls. Glows are positioned
+ * relative to the centred 420px app column, so desktop matches mobile.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(500px 460px at calc(50% - 175px) -30px, rgba(127, 184, 201, 0.4), transparent 72%),
+    radial-gradient(470px 430px at calc(50% + 195px) 30px, rgba(150, 112, 230, 0.38), transparent 72%),
+    radial-gradient(520px 260px at 50% calc(100% + 40px), rgba(127, 184, 201, 0.12), transparent 70%),
+    #0b0e15;
+}
+
+/* Translucent cards let the aurora show through, softened by a blur. */
+.bg-surface,
+.bg-deep {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 body {

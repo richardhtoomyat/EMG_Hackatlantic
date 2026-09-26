@@ -150,11 +150,12 @@ a real EMG-derived activation map would be built from a sequence of sets.
 
 ## Design tokens
 
-Dark theme, warm neutral ink on near-black surfaces, with a small accent
-palette for scores/intensity:
+Dark "Aurora" theme: teal + violet glows on a near-black base (a fixed
+layer, `body::before` in `src/index.css`), translucent blurred cards, warm
+neutral ink, and a small accent palette for scores/intensity:
 
 ```
-bg #0D1014   surface #161A20   deep #11151A   line #262C35   track #1E232B
+bg #0B0E15   surface rgba(26,30,42,.68)   deep rgba(18,21,30,.8)   line #262C35   track #1E232B
 ink #ECEAE4  muted #9AA0A8     soft #C4C7CC
 accent #7FB8C9   work #D9B26A   max #E07A5F
 ```

@@ -55,7 +55,7 @@ export default function BodyMetrics() {
   const [busy, setBusy] = useState(false);
 
   if (source === "loading") {
-    return <div className="min-h-screen bg-bg flex items-center justify-center text-muted text-sm">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-muted text-sm">Loading…</div>;
   }
   if (!user) return <Navigate to="/login" replace />;
 
@@ -120,7 +120,7 @@ export default function BodyMetrics() {
   const age = birthDate && birthDate <= today() ? ageFromBirthDate(birthDate) : null;
 
   return (
-    <div className="max-w-[420px] mx-auto bg-bg min-h-screen flex flex-col p-6">
+    <div className="max-w-[420px] mx-auto min-h-screen flex flex-col p-6">
       <div className="flex items-center justify-between">
         <div className="font-serif font-light text-xl">
           activate<span className="text-accent font-medium">Myo</span>
