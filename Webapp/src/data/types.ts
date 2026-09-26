@@ -89,6 +89,15 @@ export interface AthleteProfile {
   email: string;
   /** Profile picture URL (e.g. from Google). */
   avatarUrl?: string;
+  role?: string;
+  /** Raw body metrics (Supabase only); labels above are for display. */
+  heightCm?: number | null;
+  weightKg?: number | null;
+  birthDate?: string | null; // YYYY-MM-DD
+  weightUpdatedAt?: string | null; // ISO timestamp
+  heightUpdatedAt?: string | null;
+  /** False until supabase/body_metrics.sql has added the columns (setup/reminders stay off). */
+  bodyMetricsEnabled?: boolean;
   heightLabel: string;
   weightLabel: string;
   age: number;

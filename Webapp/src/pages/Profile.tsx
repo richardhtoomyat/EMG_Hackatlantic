@@ -1,5 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
+import BodyMetricReminder from "../components/BodyMetricReminder";
+import { daysSince } from "../lib/bodyMetrics";
 import { useAppData } from "../data/dataContext";
 
 export default function Profile() {
@@ -31,11 +33,26 @@ export default function Profile() {
         {ATHLETE.email && <div className="text-[13px] text-muted">{ATHLETE.email}</div>}
       </div>
 
-      <h3 className="text-[15px] font-medium text-soft mt-5 mb-2.5">Body Metrics</h3>
+      <div className="mt-5">
+        <BodyMetricReminder />
+      </div>
+
+      <div className="flex justify-between items-center mb-2.5">
+        <h3 className="text-[15px] font-medium text-soft">Body Metrics</h3>
+        {enabled && (
+          <Link to="/body-metrics" className="text-sm text-accent">
+            Edit
+          </Link>
+        )}
+      </div>
       <div className="bg-surface rounded-2xl p-3.5 flex flex-col gap-3">
-        <Row label="Height" value={ATHLETE.heightLabel} />
-        <Row label="Weight" value={ATHLETE.weightLabel} />
-        <Row label="Age" value={ATHLETE.age ? String(ATHLETE.age) : "—"} />
+        <Row label="Height" value={ATHLETE.heightLabel} note={updatedNote(ATHLETE.heightUpdatedAt)} />
+        <Row label="Weight" value={ATHLETE.weightLabel} note={updatedNote(ATHLETE.weightUpdatedAt)} />
+        <Row
+          label="Age"
+          value={ATHLETE.age ? String(ATHLETE.age) : "—"}
+          note={ATHLETE.birthDate ? `Born ${formatDate(ATHLETE.birthDate + "T00:00")}` : undefined}
+        />
       </div>
 
       <h3 className="text-[15px] font-medium text-soft mt-5 mb-2.5">Connected Devices</h3>
@@ -65,11 +82,23 @@ export default function Profile() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div>
       <div className="text-xs text-muted mb-1">{label}</div>
-      <div className="text-sm">{value}</div>
+      <div className="text-sm">
+        {value}
+        {note && <span className="text-xs text-muted"> · {note}</span>}
+      </div>
     </div>
   );
+}
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+function updatedNote(iso: string | null | undefined): string | undefined {
+  const days = daysSince(iso);
+  if (days === null) return undefined;
+  return days === 0 ? "updated today" : days === 1 ? "updated yesterday" : `updated ${days} days ago`;
 }
