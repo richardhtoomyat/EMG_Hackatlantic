@@ -3,9 +3,10 @@
 -- sessions, sets), matching the prototype's mock data. Dates are relative
 -- to now() so "Today" / "This Week" look live.
 --
--- If profiles.id references auth.users, create two users first
--- (Authentication → Users → Add user) — the first becomes the athlete and
--- the second the coach. Otherwise fixed placeholder ids are used.
+-- profiles.id references auth.users, so this uses the first two users in
+-- Authentication → Users (athlete, then coach). If they don't exist yet it
+-- creates demo logins: alex@activatemyo.io / coach@activatemyo.io, both with
+-- password "demo-password-123" (change or delete them after the hackathon).
 -- Run in Supabase → SQL Editor. Re-running replaces this demo data.
 -- ============================================================================
 do $$
@@ -16,10 +17,24 @@ declare
   s_d2    uuid := gen_random_uuid();
   s_d3    uuid := gen_random_uuid();
 begin
+  -- Make sure at least two auth users exist (profiles.id → auth.users.id).
+  for i in (select count(*)::int + 1 from auth.users) .. 2 loop
+    insert into auth.users (
+      instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change
+    ) values (
+      '00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated',
+      case i when 1 then 'alex@activatemyo.io' else 'coach@activatemyo.io' end,
+      extensions.crypt('demo-password-123', extensions.gen_salt('bf')), now(),
+      '{"provider":"email","providers":["email"]}', '{}',
+      now() + (i || ' seconds')::interval, now(),
+      '', '', '', ''
+    );
+  end loop;
+
   select id into athlete from auth.users order by created_at limit 1;
   select id into coach   from auth.users order by created_at offset 1 limit 1;
-  athlete := coalesce(athlete, 'a0000000-0000-0000-0000-000000000001');
-  coach   := coalesce(coach,   'c0000000-0000-0000-0000-000000000001');
 
   delete from public.sets where session_id in (select id from public.sessions where athlete_id = athlete);
   delete from public.sessions    where athlete_id = athlete;
