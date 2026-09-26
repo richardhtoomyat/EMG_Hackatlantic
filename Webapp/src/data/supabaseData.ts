@@ -210,6 +210,8 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
     birthDate: profile?.birth_date ?? null,
     weightUpdatedAt: profile?.weight_updated_at ?? null,
     heightUpdatedAt: profile?.height_updated_at ?? null,
+    // select("*") only returns birth_date once body_metrics.sql has run.
+    bodyMetricsEnabled: !!profile && "birth_date" in profile,
   };
 
   // Athletes see their own link; coaches see the athlete linked to them.

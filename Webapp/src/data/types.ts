@@ -96,6 +96,8 @@ export interface AthleteProfile {
   birthDate?: string | null; // YYYY-MM-DD
   weightUpdatedAt?: string | null; // ISO timestamp
   heightUpdatedAt?: string | null;
+  /** False until supabase/body_metrics.sql has added the columns (setup/reminders stay off). */
+  bodyMetricsEnabled?: boolean;
   heightLabel: string;
   weightLabel: string;
   age: number;

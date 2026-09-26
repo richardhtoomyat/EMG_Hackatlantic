@@ -25,7 +25,7 @@ export function daysSince(iso: string | null | undefined, now = new Date()): num
 
 /** First-time setup needed: an athlete without height, weight or date of birth. */
 export function needsBodyMetricsSetup(a: AthleteProfile): boolean {
-  if (a.role?.toLowerCase() === "coach") return false;
+  if (!a.bodyMetricsEnabled || a.role?.toLowerCase() === "coach") return false;
   return !a.heightCm || !a.weightKg || !a.birthDate;
 }
 
@@ -35,7 +35,9 @@ export interface BodyMetricReminders {
 }
 
 export function bodyMetricReminders(a: AthleteProfile, now = new Date()): BodyMetricReminders {
-  if (a.role?.toLowerCase() === "coach" || needsBodyMetricsSetup(a)) return { weightDue: false, heightDue: false };
+  if (!a.bodyMetricsEnabled || a.role?.toLowerCase() === "coach" || needsBodyMetricsSetup(a)) {
+    return { weightDue: false, heightDue: false };
+  }
   const sinceWeight = daysSince(a.weightUpdatedAt, now);
   const sinceHeight = daysSince(a.heightUpdatedAt, now);
   const young = a.birthDate ? ageFromBirthDate(a.birthDate, now) < HEIGHT_REMINDER_UNTIL_AGE : false;
