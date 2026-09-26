@@ -8,9 +8,12 @@ export default function History() {
     <div className="flex-grow flex flex-col">
       <h2 className="font-serif font-light text-[22px] mb-3">This Week</h2>
 
+      {SESSION_HISTORY.length === 0 && (
+        <div className="bg-surface rounded-2xl p-5 text-center text-sm text-muted">No sessions yet.</div>
+      )}
       {SESSION_HISTORY.map((item, i) => (
         <Link
-          key={i}
+          key={item.id ?? i}
           to="/session"
           className="bg-surface rounded-2xl p-3 my-2 flex justify-between items-center"
         >

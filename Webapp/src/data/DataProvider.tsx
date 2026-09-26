@@ -1,39 +1,41 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useAuth } from "../auth/authContext";
 import { DataContext, MOCK_DATA, type DataSource } from "./dataContext";
-import { fetchAppData } from "./supabaseData";
+import { emptyAppData, fetchAppData } from "./supabaseData";
 import type { AppData } from "./types";
 
+type Loaded = { userId: string; data: AppData; source: DataSource };
+
 /**
- * Renders immediately with mock data, then swaps in Supabase data once it
- * loads (if VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are set). On any
- * error it stays on mock data and logs the problem to the console.
+ * Supabase not configured → mock data (demo mode).
+ * Signed in → the user's own rows from Supabase. Until they arrive the user
+ * sees an empty skeleton with their email, never another user's/mock data.
  */
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(MOCK_DATA);
-  const [source, setSource] = useState<DataSource>("loading");
+  const { user, enabled } = useAuth();
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
 
   useEffect(() => {
+    if (!enabled || !user) return;
     let cancelled = false;
-
-    fetchAppData(MOCK_DATA)
-      .then((result) => {
-        if (cancelled) return;
-        if (!result) {
-          setSource("mock");
-          return;
-        }
-        setData(result);
-        setSource("supabase");
+    fetchAppData(MOCK_DATA, user)
+      .then((data) => {
+        if (!cancelled) setLoaded({ userId: user.id, data, source: "supabase" });
       })
       .catch((err) => {
-        console.error("[activateMyo] Supabase load failed, using mock data:", err);
-        if (!cancelled) setSource("error");
+        console.error("[activateMyo] Supabase load failed:", err);
+        if (!cancelled) setLoaded({ userId: user.id, data: emptyAppData(MOCK_DATA, user), source: "error" });
       });
-
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled, user]);
 
-  return <DataContext.Provider value={{ data, source }}>{children}</DataContext.Provider>;
+  let value: { data: AppData; source: DataSource };
+  if (!enabled) value = { data: MOCK_DATA, source: "mock" };
+  else if (!user) value = { data: MOCK_DATA, source: "loading" };
+  else if (loaded?.userId === user.id) value = loaded;
+  else value = { data: emptyAppData(MOCK_DATA, user), source: "loading" };
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

@@ -144,12 +144,12 @@ export interface WeeklyTrends {
 /** Everything the pages read, bundled — provided by data/DataProvider.tsx. */
 export interface AppData {
   ATHLETE: AthleteProfile;
-  COACH_LINK: CoachLink;
+  COACH_LINK: CoachLink | null;
   READINESS: ReadinessSnapshot;
   WEEK_SUMMARY: DaySummary[];
   WEEKLY_READINESS_TREND_PCT: number;
   TODAY_METRICS: TodayMetrics;
-  CURRENT_SESSION: Session;
+  CURRENT_SESSION: Session | null;
   LIVE_SET: LiveSet;
   SESSION_HISTORY: SessionHistoryItem[];
   WEEKLY_TRENDS: WeeklyTrends;

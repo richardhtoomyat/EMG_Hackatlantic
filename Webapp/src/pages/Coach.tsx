@@ -2,6 +2,16 @@ import { useAppData } from "../data/dataContext";
 
 export default function Coach() {
   const { COACH_LINK } = useAppData();
+  if (!COACH_LINK) {
+    return (
+      <div className="flex-grow flex flex-col">
+        <h2 className="font-serif font-light text-[22px]">Coach Access</h2>
+        <div className="bg-surface rounded-2xl p-5 text-center mt-4 text-sm text-muted">
+          No coach linked yet.
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex-grow flex flex-col">
       <h2 className="font-serif font-light text-[22px]">Coach Access</h2>

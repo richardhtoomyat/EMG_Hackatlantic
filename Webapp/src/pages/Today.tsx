@@ -31,8 +31,8 @@ export default function Today() {
           <h1 className="font-serif font-light text-[27px] leading-tight">Good morning, {firstName}</h1>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface text-xs">
-          <span className="w-2 h-2 rounded-full bg-accent" />
-          Connected
+          <span className={`w-2 h-2 rounded-full ${ATHLETE.sensorsConnected ? "bg-accent" : "bg-muted"}`} />
+          {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
 
