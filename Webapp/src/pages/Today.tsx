@@ -5,6 +5,7 @@ import ScoreCard from "../components/ScoreCard";
 import StatGrid from "../components/StatGrid";
 import WeekBars from "../components/WeekBars";
 import { MuscleStatList } from "../components/StatGrid";
+import BodyMetricReminder from "../components/BodyMetricReminder";
 import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
 
@@ -35,6 +36,8 @@ export default function Today() {
           {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
+
+      <BodyMetricReminder />
 
       <ScoreCard label="Readiness Score" score={READINESS.score} description={READINESS.description} />
 

@@ -64,12 +64,19 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    else's). The app writes through `src/data/saveSession.ts`; until the EMG
    sensor streams real sets, **Workout → Test tools → Save test session**
    saves a generated workout for the signed-in account and opens it.
-6. **Test data (optional)** — `supabase/test_data.sql` fills one account
+6. **Body metrics** — run `supabase/body_metrics.sql`. It adds `birth_date`,
+   `weight_updated_at`, `height_updated_at` to `profiles` and lets users
+   update only their own height/weight/date of birth (not their role). After
+   sign-in, athletes without height, weight or date of birth are sent to
+   `/body-metrics` first. Age is computed from the birth date, so it rises
+   every birthday. In-app reminders (Today + Profile): weight every 20 days,
+   height yearly while under 22 (`src/lib/bodyMetrics.ts`).
+7. **Test data (optional)** — `supabase/test_data.sql` fills one account
    (set `target_email` at the top) with sessions aimed at each screen: today
    (Today + Session with coach feedback and L/R imbalance), this week
    (week bars, trends), last week (History only), and a session with no
    sets. `supabase/test_data_cleanup.sql` removes them again.
-7. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+8. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
    with password `demo-password-123`, plus sessions/sets.
 

@@ -3,8 +3,10 @@ import { useAuth } from "./auth/authContext";
 import Layout from "./components/Layout";
 import { AuthProvider } from "./auth/AuthProvider";
 import RequireAuth from "./auth/RequireAuth";
+import RequireBodyMetrics from "./auth/RequireBodyMetrics";
 import { DataProvider } from "./data/DataProvider";
 import Login from "./pages/Login";
+import BodyMetrics from "./pages/BodyMetrics";
 import Today from "./pages/Today";
 import Workout from "./pages/Workout";
 import Session from "./pages/Session";
@@ -20,9 +22,19 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
+              path="/body-metrics"
               element={
                 <RequireAuth>
-                  <Layout />
+                  <BodyMetrics />
+                </RequireAuth>
+              }
+            />
+            <Route
+              element={
+                <RequireAuth>
+                  <RequireBodyMetrics>
+                    <Layout />
+                  </RequireBodyMetrics>
                 </RequireAuth>
               }
             >

@@ -10,6 +10,7 @@
  * keeps its mock value.
  */
 import { ALL_MUSCLE_IDS } from "./mockData";
+import { ageFromBirthDate } from "../lib/bodyMetrics";
 import { buildMapFromPercentages } from "../lib/muscleMap";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -31,6 +32,10 @@ type ProfileRow = {
   last_name?: string | null;
   avatar_url?: string | null;
   email?: string | null;
+  // Added by supabase/body_metrics.sql.
+  birth_date?: string | null;
+  weight_updated_at?: string | null;
+  height_updated_at?: string | null;
   role: string | null;
   height_cm: number | null;
   weight_kg: number | null;
@@ -196,8 +201,15 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
     avatarUrl: profile?.avatar_url || data.ATHLETE.avatarUrl,
     heightLabel: heightLabel(profile?.height_cm ?? null),
     weightLabel: weightLabel(profile?.weight_kg ?? null),
-    age: profile?.age ?? 0,
+    // Derived from birth_date so it goes up every birthday; falls back to the stored age.
+    age: profile?.birth_date ? ageFromBirthDate(profile.birth_date) : profile?.age ?? 0,
     sensorsConnected: !!profile?.sensors_connected,
+    role: profile?.role ?? undefined,
+    heightCm: profile?.height_cm != null ? Number(profile.height_cm) : null,
+    weightKg: profile?.weight_kg != null ? Number(profile.weight_kg) : null,
+    birthDate: profile?.birth_date ?? null,
+    weightUpdatedAt: profile?.weight_updated_at ?? null,
+    heightUpdatedAt: profile?.height_updated_at ?? null,
   };
 
   // Athletes see their own link; coaches see the athlete linked to them.
