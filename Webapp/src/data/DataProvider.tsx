@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import type { User } from "@supabase/supabase-js";
 import { useAuth } from "../auth/authContext";
 import { DataContext, MOCK_DATA, type DataSource } from "./dataContext";
 import { emptyAppData, fetchAppData } from "./supabaseData";
@@ -18,17 +19,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!enabled || !user) return;
     let cancelled = false;
-    fetchAppData(MOCK_DATA, user)
-      .then((data) => {
-        if (!cancelled) setLoaded({ userId: user.id, data, source: "supabase" });
-      })
-      .catch((err) => {
-        console.error("[activateMyo] Supabase load failed:", err);
-        if (!cancelled) setLoaded({ userId: user.id, data: emptyAppData(MOCK_DATA, user), source: "error" });
-      });
+    load(user, () => cancelled).then((next) => next && setLoaded(next));
     return () => {
       cancelled = true;
     };
+  }, [enabled, user]);
+
+  const refresh = useCallback(async () => {
+    if (!enabled || !user) return;
+    const next = await load(user, () => false);
+    if (next) setLoaded(next);
   }, [enabled, user]);
 
   let value: { data: AppData; source: DataSource };
@@ -37,5 +37,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   else if (loaded?.userId === user.id) value = loaded;
   else value = { data: emptyAppData(MOCK_DATA, user), source: "loading" };
 
-  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  return <DataContext.Provider value={{ ...value, refresh }}>{children}</DataContext.Provider>;
+}
+
+async function load(user: User, isCancelled: () => boolean): Promise<Loaded | null> {
+  try {
+    const data = await fetchAppData(MOCK_DATA, user);
+    return isCancelled() ? null : { userId: user.id, data, source: "supabase" };
+  } catch (err) {
+    console.error("[activateMyo] Supabase load failed:", err);
+    return isCancelled() ? null : { userId: user.id, data: emptyAppData(MOCK_DATA, user), source: "error" };
+  }
 }

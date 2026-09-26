@@ -59,7 +59,17 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    `https://<project-ref>.supabase.co/auth/v1/callback`. Paste its client ID
    and secret into Supabase → Authentication → Providers → **Google** and
    enable it. No front-end config is needed.
-5. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+5. **Writing workouts** — run `supabase/write_access.sql` so signed-in users
+   can create/edit/delete their own `sessions` and `sets` (and nobody
+   else's). The app writes through `src/data/saveSession.ts`; until the EMG
+   sensor streams real sets, **Workout → Test tools → Save test session**
+   saves a generated workout for the signed-in account and opens it.
+6. **Test data (optional)** — `supabase/test_data.sql` fills one account
+   (set `target_email` at the top) with sessions aimed at each screen: today
+   (Today + Session with coach feedback and L/R imbalance), this week
+   (week bars, trends), last week (History only), and a session with no
+   sets. `supabase/test_data_cleanup.sql` removes them again.
+7. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
    with password `demo-password-123`, plus sessions/sets.
 

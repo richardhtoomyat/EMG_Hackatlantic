@@ -17,11 +17,20 @@ export const MOCK_DATA: AppData = {
 
 export type DataSource = "mock" | "loading" | "supabase" | "error";
 
-export const DataContext = createContext<{ data: AppData; source: DataSource }>({ data: MOCK_DATA, source: "mock" });
+export const DataContext = createContext<{ data: AppData; source: DataSource; refresh: () => Promise<void> }>({
+  data: MOCK_DATA,
+  source: "mock",
+  refresh: async () => {},
+});
 
 /** All page data — mock until Supabase loads, then live. */
 export function useAppData(): AppData {
   return useContext(DataContext).data;
+}
+
+/** Re-fetch the signed-in user's data (e.g. after saving a session). Resolves once loaded. */
+export function useRefreshData(): () => Promise<void> {
+  return useContext(DataContext).refresh;
 }
 
 /** Where the current data came from (handy for a debug badge). */
