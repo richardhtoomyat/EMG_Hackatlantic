@@ -5,20 +5,18 @@ import ScoreCard from "../components/ScoreCard";
 import StatGrid from "../components/StatGrid";
 import WeekBars from "../components/WeekBars";
 import { MuscleStatList } from "../components/StatGrid";
-import {
-  READINESS,
-  SESSION_HISTORY,
-  TODAY_METRICS,
-  WEEKLY_READINESS_TREND_PCT,
-  WEEK_SUMMARY,
-} from "../data/mockData";
+import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
 
 export default function Today() {
+  const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
+    useAppData();
   const workoutsThisWeek = WEEK_SUMMARY.filter((d) => d.trained).length;
+  const todayDate = WEEK_SUMMARY.find((d) => d.isToday)?.date;
+  const firstName = ATHLETE.name.split(" ")[0];
 
   // "Today" body map = union of every exercise logged today.
-  const todaysExercises = SESSION_HISTORY.filter((s) => s.dateLabel === "Sep 26").map((s) => s.exerciseName);
+  const todaysExercises = SESSION_HISTORY.filter((s) => s.date === todayDate).map((s) => s.exerciseName);
   const todayMuscles = mergeExercises(
     todaysExercises.length > 0 ? todaysExercises : ["Bicep Curl", "Squat", "Shoulder Press"]
   );
@@ -27,8 +25,10 @@ export default function Today() {
     <div className="flex-grow flex flex-col">
       <div className="flex justify-between items-start mb-4">
         <div>
-          <div className="text-[11px] tracking-wider text-muted uppercase">Saturday, Sep 26</div>
-          <h1 className="font-serif font-light text-[27px] leading-tight">Good morning, Alex</h1>
+          <div className="text-[11px] tracking-wider text-muted uppercase">
+            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+          </div>
+          <h1 className="font-serif font-light text-[27px] leading-tight">Good morning, {firstName}</h1>
         </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface text-xs">
           <span className="w-2 h-2 rounded-full bg-accent" />

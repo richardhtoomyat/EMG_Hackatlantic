@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import ActivationRing from "../components/ActivationRing";
 import { StatRows } from "../components/StatGrid";
-import { LIVE_SET } from "../data/mockData";
+import { useAppData } from "../data/dataContext";
 
 export default function Workout() {
+  const { LIVE_SET } = useAppData();
   return (
     <div className="flex-grow flex flex-col">
       <div className="flex justify-between items-start mb-4">

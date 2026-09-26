@@ -3,11 +3,11 @@ import BodyMap from "../components/BodyMap";
 import Legend from "../components/Legend";
 import ScoreCard from "../components/ScoreCard";
 import { MuscleStatList, StatRows } from "../components/StatGrid";
-import { CURRENT_SESSION } from "../data/mockData";
+import { useAppData } from "../data/dataContext";
 import { muscleMapForExercise } from "../lib/muscleMap";
 
 export default function Session() {
-  const s = CURRENT_SESSION;
+  const s = useAppData().CURRENT_SESSION;
   const muscles = muscleMapForExercise(s.exerciseName);
 
   return (

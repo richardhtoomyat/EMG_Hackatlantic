@@ -1,6 +1,7 @@
-import { COACH_LINK } from "../data/mockData";
+import { useAppData } from "../data/dataContext";
 
 export default function Coach() {
+  const { COACH_LINK } = useAppData();
   return (
     <div className="flex-grow flex flex-col">
       <h2 className="font-serif font-light text-[22px]">Coach Access</h2>

@@ -23,9 +23,13 @@ import type {
   CoachLink,
   DaySummary,
   ExerciseDefinition,
+  LiveSet,
   MuscleId,
   ReadinessSnapshot,
   Session,
+  SessionHistoryItem,
+  TodayMetrics,
+  WeeklyTrends,
 } from "./types";
 
 export const ATHLETE: AthleteProfile = {
@@ -111,7 +115,7 @@ export const WEEK_SUMMARY: DaySummary[] = [
 export const WEEKLY_READINESS_TREND_PCT = 6; // "+6% vs last week"
 
 /** Today's aggregate metrics (across all of today's sessions). */
-export const TODAY_METRICS = {
+export const TODAY_METRICS: TodayMetrics = {
   avgActivationPct: 62,
   bestImbalancePct: 12,
   totalVolumeReps: 84,
@@ -148,7 +152,7 @@ export const CURRENT_SESSION: Session = {
 };
 
 /** Live-workout screen numbers (the set currently in progress). */
-export const LIVE_SET = {
+export const LIVE_SET: LiveSet = {
   exerciseName: "Bicep Curl",
   leftPct: 68,
   rightPct: 54,
@@ -160,18 +164,13 @@ export const LIVE_SET = {
 };
 
 /** Past sessions for the History screen. */
-export const SESSION_HISTORY: Array<{
-  exerciseName: string;
-  dateLabel: string;
-  reps: number;
-  score: number;
-}> = [
-  { exerciseName: "Bicep Curl", dateLabel: "Sep 26", reps: 24, score: 78 },
-  { exerciseName: "Squat", dateLabel: "Sep 25", reps: 18, score: 72 },
-  { exerciseName: "Shoulder Press", dateLabel: "Sep 24", reps: 20, score: 81 },
+export const SESSION_HISTORY: SessionHistoryItem[] = [
+  { id: "sess-2026-09-26-1", exerciseName: "Bicep Curl", date: "2026-09-26", dateLabel: "Sep 26", reps: 24, score: 78 },
+  { id: "sess-2026-09-25-1", exerciseName: "Squat", date: "2026-09-25", dateLabel: "Sep 25", reps: 18, score: 72 },
+  { id: "sess-2026-09-24-1", exerciseName: "Shoulder Press", date: "2026-09-24", dateLabel: "Sep 24", reps: 20, score: 81 },
 ];
 
-export const WEEKLY_TRENDS = {
+export const WEEKLY_TRENDS: WeeklyTrends = {
   avgImbalancePct: 20,
   bestSessionScore: 81,
   sessionsCompleted: 5,

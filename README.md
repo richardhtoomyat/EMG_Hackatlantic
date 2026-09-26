@@ -31,6 +31,29 @@ npm run build      # type-check + production build to dist/
 npm run preview    # serve the production build locally
 ```
 
+## Supabase setup
+
+The app reads from Supabase when these env vars are set, and falls back to the
+mock data in `src/data/mockData.ts` when they aren't (or if a request fails).
+
+1. **Create the tables** — Supabase dashboard → SQL Editor → paste and run
+   `supabase/schema.sql`, then `supabase/seed.sql` (demo athlete + sessions).
+2. **Local dev** — `cp .env.example .env.local` and fill in
+   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from
+   Project Settings → API. Never use the `service_role` key in the front-end.
+3. **Vercel** — Project → Settings → Environment Variables → add the same
+   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (Production + Preview), then
+   **redeploy** (Vite bakes env vars in at build time).
+
+Data flow: `src/lib/supabase.ts` (client) → `src/data/supabaseData.ts` (queries
++ mapping to the types in `types.ts`) → `src/data/DataProvider.tsx` (context) →
+pages call `useAppData()`. The Workout screen subscribes to the `live_sets`
+table via Supabase Realtime, so the FastAPI hub can upsert that row with the
+service-role key and the rings update live.
+
+RLS is currently **public read-only** (demo mode, no login). Swap the policies
+in `schema.sql` for `auth.uid()`-based ones once Supabase Auth is added.
+
 ## Pages
 
 | Route       | Screen                                                          |
@@ -106,7 +129,6 @@ Typeface: **Newsreader** (serif, display/headings) + **Manrope** (sans, body).
 - [ ] Custom LibEMG streamer for the MyoWare 2.0 + ESP32 rig, streaming RMS
       (tension) and MDF (fatigue) over shared memory
 - [ ] FastAPI + WebSocket hub broadcasting ~20 updates/sec to the app
-- [ ] Supabase for auth, athlete/coach linking, and session-level history
-      (not raw high-frequency signal)
-- [ ] Swap `src/data/mockData.ts` for a live data layer per the architecture
-      notes above
+- [x] Supabase for session-level history (not raw high-frequency signal)
+- [ ] Supabase Auth + athlete/coach linking
+- [x] Live data layer (`DataProvider` + `useAppData()`), mock data as fallback
