@@ -8,6 +8,17 @@ import { muscleMapForExercise } from "../lib/muscleMap";
 
 export default function Session() {
   const s = useAppData().CURRENT_SESSION;
+  if (!s) {
+    return (
+      <div className="flex-grow flex flex-col">
+        <h2 className="font-serif font-light text-[22px]">No sessions yet</h2>
+        <p className="text-sm text-muted mt-2">Completed workouts will show up here.</p>
+        <Link to="/" className="flex items-center justify-center h-12 rounded-full bg-accent text-bg font-semibold mt-5">
+          Back to Today
+        </Link>
+      </div>
+    );
+  }
   const muscles = s.muscleMap ?? muscleMapForExercise(s.exerciseName);
 
   return (

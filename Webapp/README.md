@@ -33,31 +33,35 @@ npm run preview    # serve the production build locally
 
 ## Supabase setup
 
-The app reads the project's existing Supabase tables — `profiles`,
-`coach_links`, `sessions`, `sets` — when these env vars are set, and falls back
-to the mock data in `src/data/mockData.ts` when they aren't (or when no rows
-are readable).
+With `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` set, the app requires
+**sign-in** (Supabase email/password auth) and shows the signed-in user's own
+rows from `profiles`, `coach_links`, `sessions` and `sets`. Without them it
+runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
 
-1. **Env vars** — `cp .env.example .env.local` and fill in `VITE_SUPABASE_URL`
-   and `VITE_SUPABASE_ANON_KEY` (Project Settings → API). Never use the
-   `service_role` key in the front-end. On **Vercel**, add the same two under
-   Project → Settings → Environment Variables and **redeploy** (Vite bakes env
-   vars in at build time).
-2. **Read access** — without login the site uses the anon key, so RLS must
-   allow anon reads. For the demo, run `supabase/demo_read_access.sql`
-   (read-only policies).
-3. **Demo data (optional)** — `supabase/seed_demo.sql` fills the tables with
-   data matching the prototype.
+1. **Env vars** — `cp .env.example .env.local` and fill in both values
+   (Project Settings → API). Never use the `service_role` key in the
+   front-end. On **Vercel**, add the same two under Project → Settings →
+   Environment Variables for Production, then **redeploy** (Vite bakes env
+   vars in at build time — a build without them silently falls back to demo
+   mode).
+2. **Read access** — run `supabase/demo_read_access.sql` (read-only policies).
+3. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+   `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
+   with password `demo-password-123`, plus sessions/sets. New users are added
+   in Supabase → Authentication → Users, with a matching `profiles` row.
 
 How the tables map onto the UI (`src/data/supabaseData.ts`):
 
 | UI | Source |
 |---|---|
-| Profile | first `profiles` row with `role = 'athlete'` (or `VITE_ATHLETE_ID`) |
-| Coach | latest `coach_links` row for that athlete + coach's `profiles.name` |
-| Session / History / This Week / Today | `sessions` + their `sets` (reps, TUT, peak, `contraction_pct` as avg activation, `muscle_pct` per muscle → L/R imbalance) |
+| Profile | signed-in user's `profiles` row + email from Supabase Auth |
+| Coach | latest `coach_links` row (athletes: `athlete_id` = me; coaches: `coach_id` = me) + coach's `profiles.name` |
+| Session / History / This Week / Today | `sessions` + `sets` of the athlete (coaches see their linked athlete) |
 | Session body map | `sessions.muscle_map` (`{"f-bicep-l": "primary" \| 0-100, …}`), else the exercise definition |
 | Readiness, live Workout screen, fatigue | not stored yet — mock data |
+
+Auth lives in `src/auth/` (`AuthProvider`, `RequireAuth`, `useAuth()`); the
+login screen is `src/pages/Login.tsx` and Logout is on the Profile screen.
 
 ## Pages
 

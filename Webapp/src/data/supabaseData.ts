@@ -4,12 +4,15 @@
  * AppData shape as the mock exports in mockData.ts, so pages don't care
  * where the numbers came from.
  *
- * Anything these tables don't store yet (readiness score, the live set in
- * progress) keeps its mock value from `fallback`.
+ * Everything is scoped to the signed-in user: an athlete sees their own
+ * sessions; a coach sees the athlete linked to them in coach_links. Anything
+ * these tables don't store yet (readiness score, the live set in progress)
+ * keeps its mock value.
  */
 import { ALL_MUSCLE_IDS } from "./mockData";
 import { buildMapFromPercentages } from "../lib/muscleMap";
-import { ATHLETE_ID, supabase } from "../lib/supabase";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabase";
 import type {
   AppData,
   DaySummary,
@@ -133,90 +136,106 @@ function parseMuscleMap(v: unknown): MuscleMap | undefined {
   return buildMapFromPercentages(musclePct(Object.fromEntries(entries)) as Partial<Record<MuscleId, number>>);
 }
 
-async function resolveAthlete(): Promise<ProfileRow | null> {
-  const cols = "id,name,role,height_cm,weight_kg,age,sensors_connected";
-  if (ATHLETE_ID) {
-    const { data, error } = await supabase!.from("profiles").select(cols).eq("id", ATHLETE_ID).maybeSingle();
-    if (error) throw error;
-    return data;
+const PROFILE_COLS = "id,name,role,height_cm,weight_kg,age,sensors_connected";
+
+/** What a signed-in user sees before (or without) any rows: their identity, no workouts. */
+export function emptyAppData(fallback: AppData, user: User): AppData {
+  const week: DaySummary[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * DAY_MS);
+    week.push({
+      label: d.toLocaleDateString("en-US", { weekday: "narrow" }),
+      date: isoDay(d),
+      avgActivationScore: 0,
+      trained: false,
+      isToday: i === 0,
+    });
   }
-  // Prefer a profile with role "athlete"; otherwise the oldest profile.
-  const athletes = await supabase!.from("profiles").select(cols).ilike("role", "athlete").order("created_at").limit(1);
-  if (athletes.error) throw athletes.error;
-  if (athletes.data.length > 0) return athletes.data[0];
-  const any = await supabase!.from("profiles").select(cols).order("created_at").limit(1);
-  if (any.error) throw any.error;
-  return any.data[0] ?? null;
+  return {
+    ...fallback,
+    ATHLETE: {
+      name: user.email?.split("@")[0] ?? "Athlete",
+      email: user.email ?? "",
+      heightLabel: "—",
+      weightLabel: "—",
+      age: 0,
+      sensorsConnected: false,
+    },
+    COACH_LINK: null,
+    WEEK_SUMMARY: week,
+    TODAY_METRICS: { avgActivationPct: 0, bestImbalancePct: 0, totalVolumeReps: 0, fatigueLabel: "—" },
+    CURRENT_SESSION: null,
+    SESSION_HISTORY: [],
+    WEEKLY_TRENDS: { avgImbalancePct: 0, bestSessionScore: 0, sessionsCompleted: 0 },
+  };
 }
 
-/**
- * Load everything from Supabase. Returns null (→ mock data) when Supabase
- * isn't configured or no profile is readable with the current key.
- */
-export async function fetchAppData(fallback: AppData): Promise<AppData | null> {
-  if (!supabase) return null;
-  const profile = await resolveAthlete();
-  if (!profile) {
-    console.warn(
-      "[activateMyo] Supabase connected but no readable rows in `profiles` — " +
-        "the table is empty or RLS blocks the anon key. Showing mock data."
-    );
-    return null;
-  }
+/** Load the signed-in user's data from Supabase. */
+export async function fetchAppData(fallback: AppData, user: User): Promise<AppData> {
+  if (!supabase) return fallback;
+  const data = emptyAppData(fallback, user);
 
-  const [coachRes, sessionsRes] = await Promise.all([
-    supabase
-      .from("coach_links")
-      .select("coach_id,share_code,linked_since")
-      .eq("athlete_id", profile.id)
-      .order("linked_since", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from("sessions")
-      .select("id,exercise_name,started_at,ended_at,activation_score,feedback,muscle_map")
-      .eq("athlete_id", profile.id)
-      .order("started_at", { ascending: false })
-      .limit(50),
-  ]);
+  const profileRes = await supabase.from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
+  if (profileRes.error) throw profileRes.error;
+  const profile = profileRes.data as ProfileRow | null;
+  if (!profile) console.warn(`[activateMyo] no profiles row for user ${user.id}`);
+
+  data.ATHLETE = {
+    name: profile?.name || data.ATHLETE.name,
+    email: user.email ?? "",
+    heightLabel: heightLabel(profile?.height_cm ?? null),
+    weightLabel: weightLabel(profile?.weight_kg ?? null),
+    age: profile?.age ?? 0,
+    sensorsConnected: !!profile?.sensors_connected,
+  };
+
+  // Athletes see their own link; coaches see the athlete linked to them.
+  const isCoach = profile?.role?.toLowerCase() === "coach";
+  const coachRes = await supabase
+    .from("coach_links")
+    .select("athlete_id,coach_id,share_code,linked_since")
+    .eq(isCoach ? "coach_id" : "athlete_id", user.id)
+    .order("linked_since", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (coachRes.error) throw coachRes.error;
-  if (sessionsRes.error) throw sessionsRes.error;
+  const link = coachRes.data;
+  const athleteId = isCoach ? link?.athlete_id ?? null : user.id;
 
-  const sessions = (sessionsRes.data ?? []) as SessionRow[];
-  const [coachProfileRes, setsRes] = await Promise.all([
-    coachRes.data?.coach_id
-      ? supabase.from("profiles").select("name").eq("id", coachRes.data.coach_id).maybeSingle()
+  const [coachProfileRes, sessionsRes] = await Promise.all([
+    link?.coach_id
+      ? supabase.from("profiles").select("name").eq("id", link.coach_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
-    sessions.length
+    athleteId
       ? supabase
-          .from("sets")
-          .select("session_id,set_number,reps,time_under_tension_seconds,peak_activation,contraction_pct,recovery_seconds,muscle_pct")
-          .in("session_id", sessions.map((s) => s.id))
-          .order("set_number")
+          .from("sessions")
+          .select("id,exercise_name,started_at,ended_at,activation_score,feedback,muscle_map")
+          .eq("athlete_id", athleteId)
+          .order("started_at", { ascending: false })
+          .limit(50)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (coachProfileRes.error) throw coachProfileRes.error;
-  if (setsRes.error) throw setsRes.error;
-
-  const data: AppData = { ...fallback };
-
-  data.ATHLETE = {
-    name: profile.name ?? "Athlete",
-    email: "",
-    heightLabel: heightLabel(profile.height_cm),
-    weightLabel: weightLabel(profile.weight_kg),
-    age: profile.age ?? 0,
-    sensorsConnected: !!profile.sensors_connected,
-  };
+  if (sessionsRes.error) throw sessionsRes.error;
 
   const coachName = coachProfileRes.data?.name ?? "Your coach";
-  if (coachRes.data) {
+  if (link) {
     data.COACH_LINK = {
       coachName,
-      shareCode: coachRes.data.share_code,
-      linkedSince: coachRes.data.linked_since ? relativeDays(coachRes.data.linked_since) : "—",
+      shareCode: link.share_code,
+      linkedSince: link.linked_since ? relativeDays(link.linked_since) : "—",
     };
   }
+
+  const sessions = (sessionsRes.data ?? []) as SessionRow[];
+  if (sessions.length === 0) return data;
+
+  const setsRes = await supabase
+    .from("sets")
+    .select("session_id,set_number,reps,time_under_tension_seconds,peak_activation,contraction_pct,recovery_seconds,muscle_pct")
+    .in("session_id", sessions.map((s) => s.id))
+    .order("set_number");
+  if (setsRes.error) throw setsRes.error;
 
   const setsBySession: Record<string, SetRow[]> = {};
   for (const s of (setsRes.data ?? []) as SetRow[]) (setsBySession[s.session_id] ??= []).push(s);
@@ -265,7 +284,7 @@ export async function fetchAppData(fallback: AppData): Promise<AppData | null> {
     fatigueLabel: "—", // not stored yet
   };
 
-  if (full.length > 0) data.CURRENT_SESSION = full[0];
+  data.CURRENT_SESSION = full[0];
 
   return data;
 }
