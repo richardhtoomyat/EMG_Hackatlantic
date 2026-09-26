@@ -1,0 +1,4 @@
+pio run -e thing_plus_base -t upload // base station
+pio device monitor -e thing_plus_base // monitor base out
+pio run -e shield_tx0 -t upload // sensor 1
+pio run -e shield_tx1 -t upload // sensor 2

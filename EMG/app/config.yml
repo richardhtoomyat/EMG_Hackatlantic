@@ -1,0 +1,9 @@
+# config.yml
+serial:
+  port: "COM3"
+  baud_rate: 115200
+  missing_value: -1
+  max_channel: 2
+
+libemg:
+  port: 12346
