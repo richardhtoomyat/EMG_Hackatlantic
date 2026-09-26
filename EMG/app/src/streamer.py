@@ -67,15 +67,13 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
     primary_sensor: str | None = None
 
     # Keep scanning while connected so a later sensor can join automatically.
-    discovery_queue: asyncio.Queue[tuple[BLEDevice, str]] = asyncio.Queue()
     connecting: set[str] = set()
     connection_tasks: set[asyncio.Task[None]] = set()
 
     def on_advertisement(device: BLEDevice, advertisement: AdvertisementData) -> None:
         name: str = advertisement.local_name or device.name or ""
-        if name in sensor_slots and name not in connecting:
-            connecting.add(name)
-            discovery_queue.put_nowait((device, name))
+        if name in sensor_slots:
+            try_connect_unconnected(name, device)
 
     def make_notification_callback(
         name: str,
@@ -144,17 +142,23 @@ async def _run_ble_streamer(smm: SharedMemoryManager) -> None:
             await asyncio.sleep(RECONNECT_DELAY_S)
             connecting.discard(name)
 
+    def try_connect_unconnected(sensor: str, device: BLEDevice) -> None:
+        """Connect a configured sensor when an advertisement appears."""
+        if sensor not in sensor_slots or sensor in connecting:
+            return
+
+        connecting.add(sensor)
+        task: asyncio.Task[None] = asyncio.create_task(connect_and_stream(device, sensor))
+        connection_tasks.add(task)
+        task.add_done_callback(connection_tasks.discard)
+
     async with BleakScanner(detection_callback=on_advertisement):
         print(
             f"[BLE] Scanning for {', '.join(SENSOR_NAMES)}; "
             f"characteristic {CHARACTERISTIC_UUID}",
             flush=True,
         )
-        while True:
-            device, name = await discovery_queue.get()
-            task: asyncio.Task[None] = asyncio.create_task(connect_and_stream(device, name))
-            connection_tasks.add(task)
-            task.add_done_callback(connection_tasks.discard)
+        await asyncio.Event().wait()
 
 
 def _ble_streamer_worker(shared_memory_items: list[list[Any]]) -> None:
