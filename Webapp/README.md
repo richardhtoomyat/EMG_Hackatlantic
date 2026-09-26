@@ -45,10 +45,16 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    vars in at build time — a build without them silently falls back to demo
    mode).
 2. **Read access** — run `supabase/demo_read_access.sql` (read-only policies).
-3. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+3. **Sign up** — run `supabase/signup_profiles.sql`. It adds a trigger that
+   creates a `profiles` row (name + athlete/coach role from the Sign up form)
+   for every new user, and backfills existing users. In Supabase →
+   Authentication → URL Configuration, set **Site URL** to the Vercel URL so
+   confirmation emails link back to the site. (With "Confirm email" turned
+   off under Authentication → Providers → Email, new users are signed in
+   immediately.)
+4. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
-   with password `demo-password-123`, plus sessions/sets. New users are added
-   in Supabase → Authentication → Users, with a matching `profiles` row.
+   with password `demo-password-123`, plus sessions/sets.
 
 How the tables map onto the UI (`src/data/supabaseData.ts`):
 
@@ -61,7 +67,8 @@ How the tables map onto the UI (`src/data/supabaseData.ts`):
 | Readiness, live Workout screen, fatigue | not stored yet — mock data |
 
 Auth lives in `src/auth/` (`AuthProvider`, `RequireAuth`, `useAuth()`); the
-login screen is `src/pages/Login.tsx` and Logout is on the Profile screen.
+Sign in / Sign up screen is `src/pages/Login.tsx` (the first screen when
+signed out) and Logout is on the Profile screen.
 
 ## Pages
 
