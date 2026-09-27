@@ -7,3 +7,15 @@ ble:
   missing_value: -1
   channel_stale_after_ms: 100
   reconnect_delay_s: 2
+
+# Recording (src/bridge.py). All optional; defaults shown.
+recording:
+  rep_thresholds:
+    on_pct: 40      # combined L/R activation that starts a rep
+    off_pct: 20     # ...and ends it; time above this counts as time under tension
+    min_rep_s: 0.4  # shorter bursts are ignored
+  # Per-side calibration in raw envelope units. Without it, both sides share an
+  # adaptive scale ("% of the strongest contraction so far this run").
+  # calibration:
+  #   left:  { rest: 80, mvc: 720 }
+  #   right: { rest: 95, mvc: 690 }
