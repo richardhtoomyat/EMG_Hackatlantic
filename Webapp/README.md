@@ -44,7 +44,11 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    Environment Variables for Production, then **redeploy** (Vite bakes env
    vars in at build time — a build without them silently falls back to demo
    mode).
-2. **Read access** — run `supabase/demo_read_access.sql` (read-only policies).
+2. **Read access** — for a quick demo only, `supabase/demo_read_access.sql`
+   lets anyone read every profile, session and set. For real accounts run
+   `supabase/remove_demo_read.sql` instead (after `coach_sharing.sql` and
+   `roles.sql`): everyone then reads only their own data, plus the
+   coach/athlete they're linked with; signed-out visitors read nothing.
 3. **Sign up** — run `supabase/signup_profiles.sql` (safe to re-run). It adds
    `first_name`, `last_name`, `avatar_url`, `email` to `profiles` and a
    trigger that fills a `profiles` row for every new user — from the Sign up
