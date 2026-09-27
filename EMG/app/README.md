@@ -96,6 +96,9 @@ python src/station.py --no-camera  # no webcam: type the code shown on the phone
 3. On the phone: pick the exercise → **Start recording** → **Next set** →
    **Finish**. Each set is saved as it completes, Finish saves the summary.
    **Cancel** deletes the session.
+   Each set's L/R activation curve (5 points/s) is also saved after Finish
+   (`emg_recordings`, `recording_type` 1 with `kind: "workout_curves"`) and
+   drawn per set on the Session page.
 4. **Disconnect** on the phone, **Logout**, typing `end` here, or 10 minutes
    without activity frees the station. An unfinished workout is discarded.
 

@@ -48,6 +48,10 @@ export interface SetRecord {
   timeUnderTensionSec: number;
   peakActivationPct: number;
   avgActivationPct: number;
+  /** Rest before the next set (seconds), when recorded. */
+  recoverySec?: number;
+  /** Per-muscle average activation in this set, e.g. { "Left Bicep": 68, "Right Bicep": 55 }. */
+  musclePct?: Record<string, number>;
 }
 
 /** Per-muscle activation percentage recorded for a session (drives L/R imbalance). */
@@ -124,6 +128,9 @@ export interface SessionHistoryItem {
   dateLabel: string; // "Sep 26"
   reps: number;
   score: number;
+  timeLabel?: string; // "2:14 PM"
+  setCount?: number;
+  imbalancePct?: number;
 }
 
 /** Today's aggregate metrics (across all of today's sessions). */

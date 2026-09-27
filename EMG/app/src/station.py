@@ -54,6 +54,8 @@ DEFAULT_API = "https://emg-hackatlantic.vercel.app"
 QR_PREFIX = "activatemyo:connect:"
 
 LOOP_HZ = 20  # read + process rate
+TRACE_EVERY_S = 0.2  # saved L/R activation curve per set: 5 points per second
+TRACE_MAX_POINTS = 3000  # per set (10 min)
 LIVE_HZ = 5  # live posts per second while a user is connected
 HEARTBEAT_S = 5.0
 SENSOR_STALE_S = 2.0
@@ -144,6 +146,8 @@ class Station:
         self.batch: list[list[Optional[float]]] = []
         self.last_pct: tuple[Optional[float], Optional[float]] = (None, None)
         self.changed_at = 0.0  # last local connect/disconnect/start; older replies are stale
+        # Per-set L/R activation curve of the current workout: {set number: [[t s, left %, right %], ...]}.
+        self.traces: dict[int, list] = {}
         # Baseline / strain recording (Test tab), labelled with config.yml's sensor names.
         self.lab: Optional[LabRecording] = None
         self.sensor_names = list(sensor_names or ["MyoWareSensorL", "MyoWareSensorR"])[:2]
@@ -193,6 +197,7 @@ class Station:
                 if self.session is not None and self.session.session_id == sid:
                     return
                 self.lab = None
+                self.traces = {}
                 self.session = SessionRecorder(
                     session_id=str(sid),
                     exercise_name=str(cmd.get("exercise_name") or "Workout"),
@@ -219,11 +224,13 @@ class Station:
                     return
                 summary = s.finish(now)
                 self.session = None
+                traces, self.traces = self.traces, {}
             ended = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(summary["ended_at"] + self.wall_offset))
             body = {"session_id": sid, "ended_at": ended, "activation_score": summary["activation_score"],
                     "sets": summary["sets"]}
             if self.post_retry("finish", body):
                 log(f"Saved: {len(summary['sets'])} sets, activation score {summary['activation_score']}")
+                self.save_traces(str(sid), s.exercise_name, summary["sets"], traces)
         elif kind == "cancel":
             with self.lock:
                 if self.session is not None and self.session.session_id == sid:
@@ -231,6 +238,19 @@ class Station:
                     why = {"user": "cancelled on the phone", "disconnect": "discarded — the user disconnected",
                            "timeout": "discarded — 10 minutes without activity"}.get(str(cmd.get("reason")), "discarded")
                     log(f"Recording {why}.")
+
+    def save_traces(self, session_id: str, exercise: str, sets: list, traces: dict) -> None:
+        """Each saved set's L/R activation curve → emg_recordings, for the Session page graphs.
+        Stored as recording_type 1 with kind "workout_curves" (the table only allows types 0 and 1;
+        the strain history ignores rows without "recordings")."""
+        payload = [{"set_number": st["set_number"], "points": traces[st["set_number"]]}
+                   for st in sets if traces.get(st["set_number"])]
+        if not payload:
+            return
+        raw = {"kind": "workout_curves", "session_id": session_id, "exercise_name": exercise,
+               "every_s": TRACE_EVERY_S, "sets": payload}
+        if self.post_retry("recording", {"type": 1, "raw_data": raw}):
+            log(f"Saved activation curves for {len(payload)} set(s)")
 
     def handle_lab(self, kind: Optional[str], cmd: dict, now: float) -> None:
         """Kiril's baseline / strain recordings, started and stopped from the Test tab."""
@@ -332,6 +352,12 @@ class Station:
                     self.last_pct = (left, right)
                     if self.session is not None:
                         self.session.feed(t, left, right)
+                        cur = self.session.current
+                        points = self.traces.setdefault(cur.set_number, [])
+                        rel = t - cur.started_at
+                        if len(points) < TRACE_MAX_POINTS and (not points or rel - points[-1][0] >= TRACE_EVERY_S):
+                            points.append([round(rel, 1), None if left is None else round(left),
+                                           None if right is None else round(right)])
                     if self.lab is not None:
                         self.lab.add(left_raw, right_raw)
                     if self.connected:

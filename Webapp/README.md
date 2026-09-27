@@ -152,9 +152,9 @@ signed out) and Logout is on the Profile screen.
 | Route       | Screen                                                          |
 |-------------|------------------------------------------------------------------|
 | `/`         | Today — readiness score, this week's training, muscles worked, daily metrics |
-| `/workout`  | Live set view — L/R activation rings, imbalance, set metrics     |
-| `/session`  | Post-set/session summary — muscle map for the exercise, performance metrics, coach feedback |
-| `/history`  | Past sessions + weekly trends                                    |
+| `/workout`  | Connected to a station: pick exercise + sensor placement + sensor check → live set (L/R rings, reps, balance, activation chart, rest timer) → saved summary |
+| `/session/:id` | One workout (from History or the Workout summary; `/session` = latest) — score, performance, L/R share, each set with rest, balance and its saved activation curve, muscle map, coach feedback, session ID + SQL under Details |
+| `/history`  | This week's trends + every workout grouped by day ("Load more"); each opens its own session |
 | `/coach`    | Coach share code + access management                              |
 | `/test`     | Station link test — connection, sensors, live signal, lines typed in the station terminal, and baseline / strain recording + playback through the station |
 | `/profile`  | Athlete profile, body metrics, connected devices                  |

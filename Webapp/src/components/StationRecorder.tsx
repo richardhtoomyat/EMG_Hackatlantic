@@ -1,21 +1,27 @@
 import QRCode from "qrcode";
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useRefreshData } from "../data/dataContext";
 import { EXERCISES } from "../data/mockData";
+import { loadSession, type SessionDetail } from "../data/supabaseData";
 import { sideLabels } from "../data/testSession";
-import type { Sample, StationInfo } from "../lib/stationApi";
+import { muscleMapForExercise } from "../lib/muscleMap";
+import type { LiveMetrics, Sample, StationInfo } from "../lib/stationApi";
+import { supabase } from "../lib/supabase";
 import { PLOT_WINDOW_MS, useConnectCode, useStation } from "../lib/useStation";
+import ActivationChart, { BalanceBar, LEFT_COLOR, RIGHT_COLOR } from "./ActivationChart";
 import ActivationRing from "./ActivationRing";
-import { StatRows } from "./StatGrid";
+import BodyMap from "./BodyMap";
 
-const LEFT = "#D9B26A";
-const RIGHT = "#7FB8C9";
+const LEFT = LEFT_COLOR;
+const RIGHT = RIGHT_COLOR;
 
 /**
- * Workout screen when signed in: connect to a shared sensor station with a QR
- * code, watch the live signal, and record. The station saves the workout to
- * this account (through the Vercel API).
+ * Workout screen when signed in, after connecting to a sensor station by QR:
+ *   ready     — pick the exercise, see where the sensors go, check both respond
+ *   recording — big L/R rings, reps, balance, live activation chart, rest timer
+ *   done      — summary of the saved workout, with a link to it in History
+ * The station saves every set to this account (through the Vercel API).
  */
 export default function StationRecorder() {
   const refresh = useRefreshData();
@@ -25,122 +31,357 @@ export default function StationRecorder() {
   if (st.station === undefined) return <Notice text="Checking for a connected station…" />;
   if (st.station === null) return <ConnectCard onConnected={() => void st.refreshStation()} error={st.error} />;
 
+  const station = st.station;
   const recording = st.phase === "recording" || st.phase === "finishing";
-  const labels = sideLabels(st.exercise ?? exerciseName);
-  const m = st.metrics;
 
   return (
     <div className="flex-grow flex flex-col">
-      <div className="flex justify-between items-start mb-4 gap-3">
-        <div className="min-w-0">
-          <div className="text-[11px] tracking-wider text-muted uppercase">
-            {st.phase === "recording" ? `Recording · Set ${m?.set_number ?? 1}` : "Workout"}
-          </div>
-          <h2 className="font-serif font-light text-[22px] truncate">
-            {recording || st.phase === "starting" ? st.exercise ?? "Workout" : "Start a session"}
-          </h2>
-        </div>
-        {st.phase === "recording" ? (
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-max text-xs shrink-0">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live
-          </div>
-        ) : (
-          <StationPill station={st.station} />
+      <div className="flex justify-between items-center mb-3 gap-2">
+        <StationPill station={station} />
+        {!recording && (
+          <button onClick={() => void st.disconnect()} className="text-xs text-muted underline-offset-2 hover:underline">
+            Disconnect
+          </button>
         )}
       </div>
 
-      <EnvelopePlot samples={st.samples} tick={st.sampleTick} left={labels.left} right={labels.right} />
+      {st.phase === "starting" && <Notice text="Starting — telling the station…" />}
 
-      {(st.phase === "idle" || st.phase === "done") && (
-        <div className="bg-surface rounded-2xl p-3.5 flex flex-col gap-3 mt-3">
-          <label className="text-xs text-muted" htmlFor="exercise">Exercise</label>
-          <select id="exercise" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)}
-            className="h-11 rounded-xl bg-deep border border-line px-3 text-sm text-ink">
-            {Object.keys(EXERCISES).map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-          <div className="text-xs text-muted">
-            Sensors: left on <b className="text-soft">{sideLabels(exerciseName).left}</b>, right on{" "}
-            <b className="text-soft">{sideLabels(exerciseName).right}</b>
-          </div>
-          <button onClick={() => void st.start(exerciseName)} disabled={!st.station.online}
-            className="h-12 rounded-full bg-accent text-bg font-semibold disabled:opacity-50">
-            Start recording
-          </button>
-          {!st.station.online && (
-            <div className="text-xs text-muted">The station is offline — is <code>station.py</code> running on it?</div>
-          )}
-        </div>
+      {(st.phase === "idle") && (
+        <ReadyView
+          exercise={exerciseName}
+          onExercise={setExerciseName}
+          station={station}
+          metrics={st.metrics}
+          onStart={() => void st.start(exerciseName)}
+        />
       )}
-
-      {st.phase === "starting" && <Notice text="Creating the session and telling the station…" />}
 
       {recording && (
-        <>
-          <div className="grid grid-cols-2 gap-3 my-3">
-            <div className="text-center">
-              <ActivationRing value={m?.left_pct ?? 0} color={LEFT} size={130} />
-              <div className="text-[11px] tracking-wider text-muted uppercase mt-2">{labels.left}</div>
-            </div>
-            <div className="text-center">
-              <ActivationRing value={m?.right_pct ?? 0} color={RIGHT} size={130} />
-              <div className="text-[11px] tracking-wider text-muted uppercase mt-2">{labels.right}</div>
-            </div>
-          </div>
-          <div className="bg-deep rounded-2xl p-3.5">
-            <div className="flex justify-between items-center">
-              <div className="text-[11px] tracking-wider text-muted uppercase">Imbalance (this set)</div>
-              <div className="font-serif text-xl">{m?.imbalance_pct ?? 0}%</div>
-            </div>
-            <div className="flex gap-[3px] h-2 mt-2">
-              <div className="rounded" style={{ flex: Math.max(m?.left_avg_pct ?? 0, 1), background: LEFT }} />
-              <div className="rounded" style={{ flex: Math.max(m?.right_avg_pct ?? 0, 1), background: RIGHT }} />
-            </div>
-          </div>
-          <h3 className="text-[15px] font-medium text-soft mt-5 mb-2.5">Set {m?.set_number ?? 1}</h3>
-          <StatRows
-            items={[
-              { label: "Reps", value: m?.reps ?? 0 },
-              { label: "Time Under Tension", value: `${m?.tut_sec ?? 0}s` },
-              { label: "Peak Activation", value: `${m?.peak_pct ?? 0}%`, color: "#E07A5F" },
-              { label: "Sets done", value: m?.completed_sets ?? 0 },
-            ]}
-          />
-          {st.phase === "recording" ? (
-            <>
-              <div className="grid grid-cols-2 gap-2 mt-5">
-                <button onClick={() => void st.nextSet()} className="h-12 rounded-full border border-line">Next set</button>
-                <button onClick={() => void st.finish()} className="h-12 rounded-full bg-accent text-bg font-semibold">Finish</button>
-              </div>
-              <button onClick={() => void st.cancel()} className="text-xs text-muted mt-3 self-center">
-                Cancel and delete this session
-              </button>
-            </>
-          ) : (
-            <Notice text="Finishing — the station is saving your sets…" />
-          )}
-        </>
+        <LiveView
+          exercise={st.exercise ?? "Workout"}
+          sessionId={st.sessionId}
+          metrics={st.metrics}
+          pct={st.pct}
+          startedAt={st.startedAt}
+          setStartedAt={st.setStartedAtMs}
+          finishing={st.phase === "finishing"}
+          onNextSet={() => void st.nextSet()}
+          onFinish={() => void st.finish()}
+          onCancel={() => void st.cancel()}
+        />
       )}
 
-      {st.phase === "done" && (
-        <div className="bg-surface rounded-2xl p-3.5 mt-3 flex items-center justify-between" role="status">
-          <div className="text-sm">✓ Session saved</div>
-          <div className="flex gap-3 text-sm">
-            <Link to="/session" className="text-accent">View session</Link>
-            <button className="text-muted" onClick={st.reset}>Dismiss</button>
-          </div>
-        </div>
-      )}
+      {st.phase === "done" && st.savedSessionId && <DoneView sessionId={st.savedSessionId} onNew={st.reset} />}
 
       {st.error && <div role="alert" className="text-sm text-max mt-3">{st.error}</div>}
 
-      {(st.sessionId ?? st.savedSessionId) && <SessionIdPanel id={(st.sessionId ?? st.savedSessionId)!} />}
-
-      <button onClick={() => void st.disconnect()} className="h-11 rounded-full border border-line text-sm mt-5">
-        Disconnect from {st.station.name}
-      </button>
-      {recording && <div className="text-xs text-muted mt-1.5 self-center">Disconnecting discards the unfinished workout.</div>}
+      {recording && (
+        <button onClick={() => void st.disconnect()} className="text-xs text-muted mt-4 self-center">
+          Disconnect from {station.name} (discards this workout)
+        </button>
+      )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+function ReadyView({ exercise, onExercise, station, metrics, onStart }: {
+  exercise: string;
+  onExercise: (name: string) => void;
+  station: StationInfo;
+  metrics: LiveMetrics | null;
+  onStart: () => void;
+}) {
+  const labels = sideLabels(exercise);
+  const both = station.sensors.left && station.sensors.right;
+  const sensorNote = !station.online
+    ? "The station is offline — is station.py running on it?"
+    : both
+      ? "Both sensors are live — flex to see them move."
+      : station.sensors.left || station.sensors.right
+        ? `Only the ${station.sensors.left ? "left" : "right"} sensor is sending — check the other one.`
+        : "No sensor data yet — are the shields on?";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <div className="text-[11px] tracking-wider text-muted uppercase">Workout</div>
+        <h2 className="font-serif font-light text-[22px]">Choose your exercise</h2>
+      </div>
+
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Exercise">
+        {Object.keys(EXERCISES).map((name) => (
+          <button
+            key={name}
+            role="radio"
+            aria-checked={name === exercise}
+            onClick={() => onExercise(name)}
+            className={`h-9 px-3.5 rounded-full text-sm border ${
+              name === exercise ? "bg-accent text-bg border-accent font-semibold" : "border-line text-soft"
+            }`}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-surface rounded-2xl p-3.5">
+        <div className="text-[11px] tracking-wider text-muted uppercase mb-2">Sensor placement</div>
+        <div className="bg-[#FAFAFA] rounded-xl p-2">
+          <BodyMap muscles={muscleMapForExercise(exercise)} className="w-full h-auto block max-h-56" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2.5 text-sm">
+          <div><span style={{ color: LEFT }}>●</span> Left sensor<div className="text-soft font-medium">{labels.left}</div></div>
+          <div><span style={{ color: RIGHT }}>●</span> Right sensor<div className="text-soft font-medium">{labels.right}</div></div>
+        </div>
+      </div>
+
+      <div className="bg-surface rounded-2xl p-3.5" data-testid="sensor-check">
+        <div className="text-[11px] tracking-wider text-muted uppercase mb-2">Sensor check</div>
+        <LevelBar label="Left" value={metrics?.left_pct} color={LEFT} live={!!station.sensors.left} />
+        <LevelBar label="Right" value={metrics?.right_pct} color={RIGHT} live={!!station.sensors.right} />
+        <div className="text-xs text-muted mt-2">{sensorNote}</div>
+      </div>
+
+      <button onClick={onStart} disabled={!station.online}
+        className="h-14 rounded-full bg-accent text-bg text-[17px] font-semibold disabled:opacity-50">
+        Start workout
+      </button>
+    </div>
+  );
+}
+
+function LevelBar({ label, value, color, live }: { label: string; value: number | null | undefined; color: string; live: boolean }) {
+  const v = live && value != null ? Math.max(0, Math.min(100, value)) : 0;
+  return (
+    <div className="flex items-center gap-2.5 my-1">
+      <div className="w-10 text-xs text-soft">{label}</div>
+      <div className="flex-1 h-2.5 rounded-full bg-track overflow-hidden">
+        <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${v}%`, background: color }} />
+      </div>
+      <div className="w-10 text-right text-xs text-muted">{live && value != null ? `${Math.round(value)}%` : "—"}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+type DoneSet = { set_number: number; reps: number | null; time_under_tension_seconds: number | null };
+
+function LiveView(props: {
+  exercise: string;
+  sessionId: string | null;
+  metrics: LiveMetrics | null;
+  pct: MutableRefObject<[number, number | null, number | null][]>;
+  startedAt: number | null;
+  setStartedAt: number | null;
+  finishing: boolean;
+  onNextSet: () => void;
+  onFinish: () => void;
+  onCancel: () => void;
+}) {
+  const { exercise, sessionId, metrics: m, pct, startedAt, setStartedAt, finishing } = props;
+  const now = useNow(1000);
+  const labels = sideLabels(exercise);
+  const setNumber = m?.set_number ?? 1;
+  const reps = m?.reps ?? 0;
+  const tut = m?.tut_sec ?? 0;
+  // After "Next set", until the new set shows any tension: resting.
+  const resting = setNumber > 1 && reps === 0 && tut === 0;
+  const done = useCompletedSets(sessionId, m?.completed_sets ?? 0);
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex justify-between items-start gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] tracking-wider text-muted uppercase">Set {setNumber}</div>
+          <h2 className="font-serif font-light text-[22px] truncate">{exercise}</h2>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-max text-xs">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse" /> Live
+          </div>
+          {startedAt && <div className="text-xs text-muted tabular-nums" data-testid="elapsed">{clock(now - startedAt)}</div>}
+        </div>
+      </div>
+
+      {resting && (
+        <div className="bg-deep rounded-2xl p-3.5 mt-3 flex justify-between items-center border border-line" data-testid="rest">
+          <div>
+            <div className="text-[11px] tracking-wider text-muted uppercase">Rest</div>
+            <div className="text-xs text-muted">Set {setNumber} starts when you lift</div>
+          </div>
+          <div className="font-serif text-[30px] tabular-nums">{setStartedAt ? clock(now - setStartedAt) : "—"}</div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        {([["left", m?.left_pct, LEFT, labels.left], ["right", m?.right_pct, RIGHT, labels.right]] as const).map(
+          ([key, v, color, label]) => (
+            <div key={key} className="flex flex-col items-center">
+              <ActivationRing value={v ?? 0} color={color} size={128} />
+              <div className="text-[11px] tracking-wider text-muted uppercase mt-2 text-center">{label}</div>
+            </div>
+          )
+        )}
+      </div>
+
+      <div className="text-center mt-3" data-testid="reps">
+        <div className="font-serif font-light text-[64px] leading-none tabular-nums">{reps}</div>
+        <div className="text-xs text-muted mt-1">reps this set</div>
+      </div>
+
+      <div className="bg-surface rounded-2xl p-3.5 mt-4">
+        <div className="flex justify-between items-baseline mb-2">
+          <div className="text-[11px] tracking-wider text-muted uppercase">Balance</div>
+          <div className="text-xs text-muted">{m?.imbalance_pct ?? 0}% imbalance</div>
+        </div>
+        <BalanceBar left={m?.left_avg_pct} right={m?.right_avg_pct} leftLabel={labels.left} rightLabel={labels.right} />
+        <div className="grid grid-cols-2 gap-2 mt-3 text-center">
+          <Metric label="Time under tension" value={`${tut}s`} />
+          <Metric label="Peak activation" value={`${m?.peak_pct ?? 0}%`} />
+        </div>
+      </div>
+
+      <div className="bg-deep rounded-2xl p-3 mt-3">
+        <div className="flex justify-between text-[11px] tracking-wider text-muted uppercase mb-1">
+          <span>Activation · last 10 s</span>
+          <span className="normal-case tracking-normal"><span style={{ color: LEFT }}>● L</span> <span style={{ color: RIGHT }}>● R</span></span>
+        </div>
+        <ActivationChart points={pct.current} windowSec={10} height={84} empty="Waiting for signal…" />
+      </div>
+
+      {done.length > 0 && (
+        <div className="mt-3" data-testid="done-sets">
+          {done.map((s) => (
+            <div key={s.set_number} className="flex justify-between text-sm py-1.5 border-b border-track last:border-0">
+              <span className="text-soft">Set {s.set_number} ✓</span>
+              <span className="text-muted">{s.reps ?? 0} reps · {Math.round(Number(s.time_under_tension_seconds ?? 0))}s</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-1 mt-4 bg-gradient-to-t from-bg via-bg/95 to-transparent">
+        {finishing ? (
+          <Notice text="Finishing — the station is saving your sets…" />
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={props.onNextSet} className="h-14 rounded-full border border-line bg-surface text-[16px]">Next set</button>
+              <button onClick={props.onFinish} className="h-14 rounded-full bg-accent text-bg text-[16px] font-semibold">Finish</button>
+            </div>
+            <button onClick={props.onCancel} className="text-xs text-muted mt-2 w-full">Cancel and delete this workout</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <div className="font-serif text-xl">{value}</div>
+      <div className="text-[10.5px] text-muted">{label}</div>
+    </div>
+  );
+}
+
+/** Sets the station has already saved for this workout (refetched when a set completes). */
+function useCompletedSets(sessionId: string | null, completed: number): DoneSet[] {
+  const [sets, setSets] = useState<DoneSet[]>([]);
+  useEffect(() => {
+    if (!sessionId || !supabase || completed === 0) {
+      setSets([]);
+      return;
+    }
+    let live = true;
+    // The station saves the set right after "Next set"; give it a moment.
+    const t = window.setTimeout(async () => {
+      const { data } = await supabase!
+        .from("sets")
+        .select("set_number,reps,time_under_tension_seconds")
+        .eq("session_id", sessionId)
+        .order("set_number");
+      if (live) setSets((data ?? []) as DoneSet[]);
+    }, 800);
+    return () => {
+      live = false;
+      window.clearTimeout(t);
+    };
+  }, [sessionId, completed]);
+  return sets;
+}
+
+// ---------------------------------------------------------------------------
+function DoneView({ sessionId, onNew }: { sessionId: string; onNew: () => void }) {
+  const [s, setS] = useState<SessionDetail | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    loadSession(sessionId).then((d) => live && setS(d), () => live && setS(null));
+    return () => {
+      live = false;
+    };
+  }, [sessionId]);
+
+  if (s === undefined) return <Notice text="Loading your summary…" />;
+  const sides = s ? sideShare(s) : null;
+  return (
+    <div className="flex flex-col gap-3" data-testid="summary">
+      <div>
+        <div className="text-[11px] tracking-wider text-muted uppercase">Workout saved ✓</div>
+        <h2 className="font-serif font-light text-[22px]">{s?.exerciseName ?? "Workout"}</h2>
+      </div>
+      {s && (
+        <div className="bg-surface rounded-2xl p-4">
+          <div className="flex items-center gap-4">
+            <ActivationRing value={s.activationScore} color="#C8202F" size={96} />
+            <div>
+              <div className="text-[11px] tracking-wider text-muted uppercase">Activation score</div>
+              <div className="font-serif text-[34px] leading-none">{s.activationScore}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+            <Metric label="Sets" value={s.sets.length} />
+            <Metric label="Reps" value={s.totalReps} />
+            <Metric label="Tension" value={`${s.totalTimeUnderTensionSec}s`} />
+          </div>
+          {sides && (
+            <div className="mt-4">
+              <BalanceBar left={sides.left} right={sides.right} leftLabel={sides.leftLabel} rightLabel={sides.rightLabel} />
+            </div>
+          )}
+        </div>
+      )}
+      <Link to={`/session/${sessionId}`} className="flex items-center justify-center h-12 rounded-full bg-accent text-bg font-semibold">
+        View session
+      </Link>
+      <button onClick={onNew} className="h-12 rounded-full border border-line">New workout</button>
+    </div>
+  );
+}
+
+function sideShare(s: SessionDetail) {
+  const pick = (re: RegExp) => s.muscleActivations.find((a) => re.test(a.muscle));
+  const l = pick(/^left\b/i);
+  const r = pick(/^right\b/i);
+  if (!l && !r) return null;
+  return { left: l?.pct ?? 0, right: r?.pct ?? 0, leftLabel: l?.muscle ?? "Left", rightLabel: r?.muscle ?? "Right" };
+}
+
+function useNow(everyMs: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), everyMs);
+    return () => window.clearInterval(id);
+  }, [everyMs]);
+  return now;
+}
+
+function clock(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,26 +517,4 @@ export function EnvelopePlot({ samples, tick, left, right }: {
 
 function Notice({ text }: { text: string }) {
   return <div className="bg-deep rounded-2xl p-3.5 mt-3 text-sm text-muted" role="status">{text}</div>;
-}
-
-/** Session ID + SQL to inspect what was written, e.g. in Supabase → SQL Editor. */
-function SessionIdPanel({ id }: { id: string }) {
-  const sql = `select * from sessions where id = '${id}';\nselect * from sets where session_id = '${id}' order by set_number;`;
-  const [copied, setCopied] = useState<string | null>(null);
-  const copy = (what: string, text: string) =>
-    navigator.clipboard?.writeText(text).then(() => setCopied(what), () => setCopied(null));
-  return (
-    <div className="bg-deep rounded-2xl p-3.5 mt-5 border border-line" data-testid="session-id-panel">
-      <div className="flex justify-between items-center">
-        <div className="text-[11px] tracking-wider text-muted uppercase">Session ID</div>
-        <button className="text-xs text-accent" onClick={() => copy("id", id)}>{copied === "id" ? "Copied" : "Copy ID"}</button>
-      </div>
-      <div className="font-mono text-xs break-all mt-1" data-testid="session-id">{id}</div>
-      <div className="flex justify-between items-center mt-3">
-        <div className="text-[11px] tracking-wider text-muted uppercase">Check it in Supabase</div>
-        <button className="text-xs text-accent" onClick={() => copy("sql", sql)}>{copied === "sql" ? "Copied" : "Copy SQL"}</button>
-      </div>
-      <pre className="font-mono text-[11px] text-soft whitespace-pre-wrap break-all mt-1">{sql}</pre>
-    </div>
-  );
 }

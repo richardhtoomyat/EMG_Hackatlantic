@@ -25,6 +25,7 @@ const LIVE_POLL_MS = 300;
 const CODE_POLL_MS = 1500;
 const FINISH_TIMEOUT_MS = 30_000;
 export const PLOT_WINDOW_MS = 10_000;
+export const PCT_WINDOW_S = 20;
 
 export type Phase = "idle" | "starting" | "recording" | "finishing" | "done";
 
@@ -41,6 +42,12 @@ export function useStation(onSaved: () => Promise<void> | void) {
   /** Raw envelope for the plot; mutated in place, `sampleTick` bumps on change. */
   const samples = useRef<Sample[]>([]);
   const [sampleTick, setSampleTick] = useState(0);
+  /** Normalised L/R % from the live metrics (last PCT_WINDOW_S), for the Workout chart: [s, left, right]. */
+  const pct = useRef<[number, number | null, number | null][]>([]);
+  const lastMetricsAt = useRef(0);
+  /** When the workout / current set started, and when "Next set" was last pressed (ms, this device). */
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [setStartedAtMs, setSetStartedAtMs] = useState<number | null>(null);
 
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -80,6 +87,7 @@ export function useStation(onSaved: () => Promise<void> | void) {
   useEffect(() => {
     if (!connectedId) {
       samples.current = [];
+      pct.current = [];
       setMetrics(null);
       return;
     }
@@ -101,6 +109,14 @@ export function useStation(onSaved: () => Promise<void> | void) {
         }
         since = snap.seq;
         setMetrics(snap.metrics);
+        const at = snap.metrics?.at;
+        if (snap.metrics && at && at !== lastMetricsAt.current) {
+          lastMetricsAt.current = at;
+          const buf = pct.current;
+          buf.push([at / 1000, snap.metrics.left_pct, snap.metrics.right_pct]);
+          const cut = buf.findIndex((p) => p[0] >= at / 1000 - PCT_WINDOW_S);
+          if (cut > 0) buf.splice(0, cut);
+        }
         // The station finished saving (recording cleared) or the recording was dropped.
         if (!snap.recording_session_id && sentAt > changedAt.current) {
           if (phaseRef.current === "finishing") {
@@ -163,6 +179,8 @@ export function useStation(onSaved: () => Promise<void> | void) {
         });
         changedAt.current = Date.now();
         setSessionId(r.session_id);
+        setStartedAt(Date.now());
+        setSetStartedAtMs(Date.now());
         setPhase("recording");
       } catch (err) {
         setPhase("idle");
@@ -170,7 +188,11 @@ export function useStation(onSaved: () => Promise<void> | void) {
       }
     });
 
-  const nextSet = () => run(async () => void (await stationApi("command", { body: { type: "next_set" } })));
+  const nextSet = () =>
+    run(async () => {
+      await stationApi("command", { body: { type: "next_set" } });
+      setSetStartedAtMs(Date.now());
+    });
 
   const finish = () =>
     run(async () => {
@@ -198,6 +220,9 @@ export function useStation(onSaved: () => Promise<void> | void) {
   const reset = () => {
     setPhase("idle");
     setSessionId(null);
+    setSavedSessionId(null);
+    setStartedAt(null);
+    setSetStartedAtMs(null);
     setError(null);
   };
 
@@ -210,6 +235,9 @@ export function useStation(onSaved: () => Promise<void> | void) {
     metrics,
     samples,
     sampleTick,
+    pct,
+    startedAt,
+    setStartedAtMs,
     error,
     refreshStation,
     start,

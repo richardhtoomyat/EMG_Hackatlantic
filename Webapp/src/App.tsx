@@ -42,6 +42,7 @@ export default function App() {
               <Route path="/" element={<Today />} />
               <Route path="/workout" element={<Workout />} />
               <Route path="/session" element={<Session />} />
+              <Route path="/session/:id" element={<Session />} />
               <Route path="/history" element={<History />} />
               <Route path="/coach" element={<Coach />} />
               <Route path="/profile" element={<Profile />} />

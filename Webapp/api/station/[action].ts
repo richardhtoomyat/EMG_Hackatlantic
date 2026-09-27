@@ -11,7 +11,7 @@
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
  *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
  *   POST /api/station/profile    {age | weight_kg}  → test write: one profile column of the connected user
- *   POST /api/station/recording  {type, raw_data}   → a baseline (0) / strain (1) recording → emg_recordings
+ *   POST /api/station/recording  {type, raw_data}   → baseline (0) / strain or workout curves (1) → emg_recordings
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -232,19 +232,35 @@ async function profile(station: StationRow, body: Record<string, unknown>) {
  * (the Playback / Test tab code reads them back).
  */
 const MAX_RECORDING_BYTES = 3_500_000; // Vercel's request limit is 4.5 MB
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function saveRecording(station: StationRow, body: { type?: unknown; raw_data?: unknown }) {
   if (!station.current_user_id) throw new HttpError(409, "Nobody is connected to this station");
   const type = body.type;
-  if (type !== 0 && type !== 1) throw new HttpError(400, "type must be 0 (baseline) or 1 (strain)");
+  if (type !== 0 && type !== 1) throw new HttpError(400, "type must be 0 (baseline) or 1 (strain / workout curves)");
   const data = body.raw_data;
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new HttpError(400, "raw_data must be an object");
   const d = data as Record<string, unknown>;
   if (type === 0 && (typeof d.channels !== "object" || typeof d.placements !== "object")) {
     throw new HttpError(400, "A baseline needs channels and placements");
   }
-  if (type === 1 && (!Array.isArray(d.recordings) || d.recordings.length > 8)) {
+  const curves = type === 1 && d.kind === "workout_curves";
+  if (type === 1 && !curves && (!Array.isArray(d.recordings) || d.recordings.length > 8)) {
     throw new HttpError(400, "A strain recording needs 1-8 recordings");
+  }
+  if (curves) {
+    // Per-set L/R activation curves of a finished workout (kind "workout_curves"; the table's
+    // recording_type check allows only 0 and 1): only for the connected user's own session.
+    if (typeof d.session_id !== "string" || !UUID.test(d.session_id) || !Array.isArray(d.sets) || d.sets.length > 100) {
+      throw new HttpError(400, "Workout curves need a session_id and 1-100 sets");
+    }
+    const owner = check(
+      await db().from("sessions").select("athlete_id").eq("id", d.session_id).maybeSingle(),
+      "load session"
+    ) as { athlete_id: string } | null;
+    if (!owner || owner.athlete_id !== station.current_user_id) {
+      throw new HttpError(409, "Session does not belong to the connected user");
+    }
   }
   if (JSON.stringify(d).length > MAX_RECORDING_BYTES) throw new HttpError(413, "Recording too large — record for a shorter time");
   const row = check(

@@ -279,14 +279,7 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
   const full = sessions.map((s) => toSession(s, setsBySession[s.id] ?? [], coachName));
   const today = isoDay(new Date());
 
-  data.SESSION_HISTORY = full.slice(0, 20).map<SessionHistoryItem>((s) => ({
-    id: s.id,
-    exerciseName: s.exerciseName,
-    date: s.date,
-    dateLabel: new Date(s.date + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-    reps: s.totalReps,
-    score: s.activationScore,
-  }));
+  data.SESSION_HISTORY = full.slice(0, HISTORY_PAGE).map(historyItem);
 
   // Last 7 days, oldest → today.
   const week: DaySummary[] = [];
@@ -325,6 +318,114 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
   return data;
 }
 
+function historyItem(s: Session): SessionHistoryItem {
+  return {
+    id: s.id,
+    exerciseName: s.exerciseName,
+    date: s.date,
+    dateLabel: new Date(s.date + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    reps: s.totalReps,
+    score: s.activationScore,
+    timeLabel: s.timeLabel,
+    setCount: s.sets.length,
+    imbalancePct: s.imbalancePct,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// History pages and single sessions (History tab → /session/:id)
+
+export const HISTORY_PAGE = 20;
+const SESSION_COLUMNS = "id,athlete_id,exercise_name,started_at,ended_at,activation_score,feedback,muscle_map";
+const SET_COLUMNS =
+  "session_id,set_number,reps,time_under_tension_seconds,peak_activation,contraction_pct,recovery_seconds,muscle_pct";
+
+async function setsFor(ids: string[]): Promise<Record<string, SetRow[]>> {
+  const by: Record<string, SetRow[]> = {};
+  if (!supabase || ids.length === 0) return by;
+  const { data, error } = await supabase.from("sets").select(SET_COLUMNS).in("session_id", ids).order("set_number");
+  if (error) throw error;
+  for (const s of (data ?? []) as SetRow[]) (by[s.session_id] ??= []).push(s);
+  return by;
+}
+
+/** One page of an athlete's workouts, newest first (rows offset … offset+HISTORY_PAGE-1). */
+export async function loadHistoryPage(athleteId: string, offset: number): Promise<SessionHistoryItem[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("sessions")
+    .select(SESSION_COLUMNS)
+    .eq("athlete_id", athleteId)
+    .order("started_at", { ascending: false })
+    .range(offset, offset + HISTORY_PAGE - 1);
+  if (error) throw error;
+  const rows = (data ?? []) as SessionRow[];
+  const sets = await setsFor(rows.map((r) => r.id));
+  return rows.map((r) => historyItem(toSession(r, sets[r.id] ?? [], "")));
+}
+
+/** [seconds into the set, left %, right %] — the saved activation curve of one set. */
+export type TracePoint = [number, number | null, number | null];
+
+export interface SessionDetail extends Session {
+  startedAt: string;
+  endedAt: string | null;
+  /** Activation curve per set number (only for the athlete's own sessions). */
+  traces: Record<number, TracePoint[]>;
+}
+
+/** A single workout with its sets, coach note and saved activation curves. */
+export async function loadSession(id: string): Promise<SessionDetail | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from("sessions").select(SESSION_COLUMNS).eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as SessionRow & { athlete_id: string };
+  const [sets, coachName, traces] = await Promise.all([setsFor([id]), coachNameFor(row.athlete_id), tracesFor(id)]);
+  return {
+    ...toSession(row, sets[id] ?? [], coachName),
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    traces,
+  };
+}
+
+async function coachNameFor(athleteId: string): Promise<string> {
+  if (!supabase) return "Your coach";
+  const link = await supabase
+    .from("coach_links")
+    .select("coach_id")
+    .eq("athlete_id", athleteId)
+    .not("coach_id", "is", null)
+    .order("linked_since", { ascending: false })
+    .limit(1);
+  const coachId = link.data?.[0]?.coach_id as string | undefined;
+  if (!coachId) return "Your coach";
+  const p = await supabase.from("profiles").select("name,first_name,last_name").eq("id", coachId).maybeSingle();
+  const v = (p.data ?? {}) as Record<string, string | null>;
+  return [v.first_name, v.last_name].filter(Boolean).join(" ") || v.name || "Your coach";
+}
+
+/** The station's saved curves for this session: emg_recordings type 1, kind "workout_curves" (athlete-only). */
+async function tracesFor(sessionId: string): Promise<Record<number, TracePoint[]>> {
+  const out: Record<number, TracePoint[]> = {};
+  if (!supabase) return out;
+  const { data, error } = await supabase
+    .from("emg_recordings")
+    .select("raw_data")
+    .eq("recording_type", 1)
+    .eq("raw_data->>kind", "workout_curves")
+    .eq("raw_data->>session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error || !data?.length) return out; // e.g. a coach viewing an athlete: not readable, no graphs
+  const raw = data[0].raw_data as { sets?: { set_number?: unknown; points?: unknown }[] };
+  for (const s of raw.sets ?? []) {
+    if (typeof s.set_number === "number" && Array.isArray(s.points)) out[s.set_number] = s.points as TracePoint[];
+  }
+  return out;
+}
+
 function toSession(s: SessionRow, sets: SetRow[], coachName: string): Session {
   const started = new Date(s.started_at);
   const muscleActivations = sessionMuscleActivations(sets);
@@ -334,6 +435,8 @@ function toSession(s: SessionRow, sets: SetRow[], coachName: string): Session {
     timeUnderTensionSec: Math.round(num(r.time_under_tension_seconds)),
     peakActivationPct: Math.round(num(r.peak_activation)),
     avgActivationPct: Math.round(num(r.contraction_pct)),
+    recoverySec: Math.round(num(r.recovery_seconds)),
+    musclePct: musclePct(r.muscle_pct),
   }));
 
   return {

@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
+import { useRefreshData } from "../data/dataContext";
+import { EXERCISES } from "../data/mockData";
+import { saveSession } from "../data/saveSession";
+import { generateTestSession } from "../data/testSession";
 import { ConnectCard, EnvelopePlot, StationPill } from "../components/StationRecorder";
 import { useStation, useStationMessages } from "../lib/useStation";
 import { RecordingLab } from "./playback/Playback";
@@ -31,7 +36,14 @@ function StationTest({ userId }: { userId: string }) {
   }, [messages.length]);
 
   if (st.station === undefined) return <Box>Checking for a connected station…</Box>;
-  if (st.station === null) return <ConnectCard onConnected={() => void st.refreshStation()} error={st.error} />;
+  if (st.station === null) {
+    return (
+      <>
+        <ConnectCard onConnected={() => void st.refreshStation()} error={st.error} />
+        <SaveTestSession />
+      </>
+    );
+  }
 
   const m = st.metrics;
   const fmt = (v: number | null | undefined) => (v == null ? "—" : `${v}%`);
@@ -96,10 +108,69 @@ function StationTest({ userId }: { userId: string }) {
       <button onClick={() => void st.disconnect()} className="h-11 rounded-full border border-line text-sm">
         Disconnect from {st.station.name}
       </button>
+      <SaveTestSession />
     </div>
   );
 }
 
 function Box({ children }: { children: ReactNode }) {
   return <div className="bg-deep rounded-2xl p-3.5 text-sm text-muted" role="status">{children}</div>;
+}
+
+/**
+ * Until the EMG sensor streams real sets, this writes a generated workout to
+ * Supabase through the real insert path (saveSession) so every screen can be
+ * tested against rows the app itself created.
+ */
+function SaveTestSession() {
+  const { user, enabled } = useAuth();
+  const refresh = useRefreshData();
+  const navigate = useNavigate();
+  const [exercise, setExercise] = useState(Object.keys(EXERCISES)[0]);
+  const [status, setStatus] = useState<{ kind: "error" | "busy"; text: string } | null>(null);
+
+  if (!enabled || !user) return null;
+
+  const onSave = async () => {
+    setStatus({ kind: "busy", text: "Saving…" });
+    try {
+      await saveSession(user.id, generateTestSession(exercise));
+      await refresh();
+      navigate("/session");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message ?? String(err);
+      setStatus({ kind: "error", text: msg });
+    }
+  };
+
+  return (
+    <div className="bg-deep rounded-2xl p-3.5 mt-6 border border-dashed border-line">
+      <div className="text-[11px] tracking-wider text-muted uppercase">Test tools</div>
+      <p className="text-xs text-muted mt-1">
+        Save a generated session for this account to Supabase, then open it.
+      </p>
+      <div className="flex gap-2 mt-3">
+        <select
+          aria-label="Exercise"
+          value={exercise}
+          onChange={(e) => setExercise(e.target.value)}
+          className="flex-1 h-11 rounded-xl bg-surface border border-line px-3 text-sm text-ink"
+        >
+          {Object.keys(EXERCISES).map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <button
+          onClick={onSave}
+          disabled={status?.kind === "busy"}
+          className="h-11 px-4 rounded-xl bg-accent text-bg text-sm font-semibold disabled:opacity-60"
+        >
+          {status?.kind === "busy" ? "Saving…" : "Save test session"}
+        </button>
+      </div>
+      {status?.kind === "error" && (
+        <div role="alert" className="text-xs text-max mt-2">Couldn't save: {status.text}</div>
+      )}
+    </div>
+  );
 }
