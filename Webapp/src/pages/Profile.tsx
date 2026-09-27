@@ -68,7 +68,7 @@ export default function Profile() {
       </div>
 
       <Link to="/coach" className="flex items-center justify-center h-12 rounded-full border border-line mt-5">
-        Share with Coach
+        {ATHLETE.role?.toLowerCase() === "coach" ? "Your athletes" : "Share with Coach"}
       </Link>
       {enabled && (
         <button

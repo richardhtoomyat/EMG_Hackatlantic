@@ -10,7 +10,7 @@ import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
 
 export default function Today() {
-  const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
+  const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, VIEWING, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
     useAppData();
   const workoutsThisWeek = WEEK_SUMMARY.filter((d) => d.trained).length;
   const todayDate = WEEK_SUMMARY.find((d) => d.isToday)?.date;
@@ -38,6 +38,15 @@ export default function Today() {
       </div>
 
       <BodyMetricReminder />
+
+      {VIEWING && (
+        <Link to="/coach" className="bg-surface rounded-2xl px-3.5 py-2.5 mb-3 flex justify-between items-center text-sm">
+          <span>
+            Viewing <b>{VIEWING.athleteName}</b>'s training
+          </span>
+          <span className="text-accent text-xs">Switch →</span>
+        </Link>
+      )}
 
       <iframe
         src="http://localhost:5000/"
