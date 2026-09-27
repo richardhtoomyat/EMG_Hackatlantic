@@ -1,7 +1,26 @@
 import type { MuscleId } from "../../data/types";
 
-export const SENSORS = ["MyoWareSensorL", "MyLocalWareSensorR"] as const;
+// Must match ble.sensor_names in EMG/app/config.yml (run.py keys its results by these names).
+export const SENSORS = ["MyoWareSensorL", "MyoWareSensorR"] as const;
 export type SensorChannel = (typeof SENSORS)[number];
+
+/** Earlier names of the same sensors, so recordings saved under them still load. */
+const LEGACY_NAMES: Record<string, SensorChannel> = { MyLocalWareSensorR: "MyoWareSensorR" };
+
+export function canonicalChannel(name: string): string {
+  return LEGACY_NAMES[name] ?? name;
+}
+
+/** Re-keys a {sensor name: value} object saved under a legacy name. */
+export function withCanonicalKeys<T>(obj: Record<string, T> | undefined): Record<string, T> | undefined {
+  if (!obj) return obj;
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = canonicalChannel(k);
+    if (!(key in out) || key === k) out[key] = v;
+  }
+  return out;
+}
 export type SensorPlacements = Record<SensorChannel, MuscleId | null>;
 
 export const MUSCLE_PLACEMENTS: { id: MuscleId; label: string }[] = [
