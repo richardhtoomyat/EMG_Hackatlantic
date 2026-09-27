@@ -144,7 +144,7 @@ export default function StationRecorder() {
 }
 
 // ---------------------------------------------------------------------------
-function ConnectCard({ onConnected, error }: { onConnected: () => void; error: string | null }) {
+export function ConnectCard({ onConnected, error }: { onConnected: () => void; error: string | null }) {
   const c = useConnectCode(true, onConnected);
   const [img, setImg] = useState<string | null>(null);
 
@@ -196,7 +196,7 @@ function ConnectCard({ onConnected, error }: { onConnected: () => void; error: s
   );
 }
 
-function StationPill({ station }: { station: StationInfo }) {
+export function StationPill({ station }: { station: StationInfo }) {
   const dot = (on?: boolean) => `w-2 h-2 rounded-full ${on ? "bg-accent" : "bg-muted"}`;
   return (
     <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface text-xs shrink-0" data-testid="station-pill">
@@ -213,7 +213,7 @@ function StationPill({ station }: { station: StationInfo }) {
 }
 
 /** Raw envelope from the station (last 10 s), both sides on one auto-scaled axis. */
-function EnvelopePlot({ samples, tick, left, right }: {
+export function EnvelopePlot({ samples, tick, left, right }: {
   samples: MutableRefObject<Sample[]>; tick: number; left: string; right: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);

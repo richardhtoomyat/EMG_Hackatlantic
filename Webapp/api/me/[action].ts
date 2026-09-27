@@ -6,6 +6,7 @@
  *   GET  /api/me/station                       → the station I'm connected to (online, sensors, recording)
  *   POST /api/me/command  {type, …}            → start (creates the session) / next_set / finish / cancel
  *   GET  /api/me/live?since=<seq>              → latest live metrics + raw sample batches after seq
+ *   GET  /api/me/messages?since=<seq>          → lines typed in the station terminal after seq (Test tab)
  *   POST /api/me/release                       → disconnect (an unfinished workout is discarded)
  */
 import { friendlyCode, requireUser, sha256, type AuthUser, type StationRow } from "../_lib/auth.js";
@@ -27,6 +28,10 @@ export function GET(req: Request) {
         return myStation(user);
       case "live":
         return liveData(user, Number(url.searchParams.get("since") ?? 0) || 0);
+      case "messages": {
+        const s = await requireConnected(user);
+        return json(await live().messages(s.id, Number(url.searchParams.get("since") ?? 0) || 0));
+      }
     }
     throw new HttpError(404, "Unknown endpoint");
   });

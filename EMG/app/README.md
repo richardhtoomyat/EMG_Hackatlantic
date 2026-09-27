@@ -100,6 +100,10 @@ python src/station.py --no-camera  # no webcam: type the code shown on the phone
    without activity frees the station. An unfinished workout is discarded.
 
 Terminal commands: a connect code · `end` (disconnect the user) · `quit`.
+While someone is connected, **any other line you type is sent to their
+phone** and shown live on the web app's **Test** tab (with the station, its
+sensors and the live signal) — a quick way to check the whole link. Those
+lines are kept ~10 minutes in Redis and wiped when the user disconnects.
 Codes are single-use and expire after 2 minutes.
 
 ### Tuning (`config.yml` → `recording:`)

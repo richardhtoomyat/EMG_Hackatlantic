@@ -111,10 +111,12 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    | `GET /api/me/station`, `POST /api/me/release` | phone | connected station / disconnect (also on Logout) |
    | `POST /api/me/command` | phone | `start` (creates the `sessions` row) · `next_set` · `finish` · `cancel` |
    | `GET /api/me/live?since=` | phone | raw envelope + live metrics |
+   | `GET /api/me/messages?since=` | phone | lines typed in the station terminal (**Test** tab) |
    | `POST /api/station/register` | station | first run → station id + key |
    | `POST /api/station/heartbeat`, `claim`, `release` | station | sensors online, scanned QR, "end" |
    | `GET /api/station/commands` | station | long-poll mailbox (≤ 8 s) |
    | `POST /api/station/live`, `set`, `finish` | station | live data; sets/summary saved to the **connected** user's session |
+   | `POST /api/station/message` | station | a typed line for the connected phone (Redis, ~10 min, wiped on disconnect) |
 
    The station sends JSON only; Vercel checks it is recording that session
    for the connected user and writes fixed rows. The session ID and SQL to
@@ -152,6 +154,7 @@ signed out) and Logout is on the Profile screen.
 | `/session`  | Post-set/session summary — muscle map for the exercise, performance metrics, coach feedback |
 | `/history`  | Past sessions + weekly trends                                    |
 | `/coach`    | Coach share code + access management                              |
+| `/test`     | Station link test — connection, sensors, live signal, lines typed in the station terminal |
 | `/profile`  | Athlete profile, body metrics, connected devices                  |
 
 ## Architecture: hardcoded data today, real sensor data tomorrow

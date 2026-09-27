@@ -41,6 +41,16 @@ const TABS: { to: string; label: string; icon: ReactNode }[] = [
     ),
   },
   {
+    to: "/test",
+    label: "Test",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2.5" />
+        <path d="M7 9.5l3 2.5-3 2.5M12.5 15H17" />
+      </svg>
+    ),
+  },
+  {
     to: "/profile",
     label: "Profile",
     icon: (

@@ -9,6 +9,7 @@
  *   POST /api/station/live       {metrics, samples} → live data for the phone (not stored)
  *   POST /api/station/set        {session_id, set}  → save one set for the connected user
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
+ *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -39,6 +40,8 @@ export function POST(req: Request) {
         return claim(station, await readJson(req));
       case "live":
         return liveData(station, await readJson(req));
+      case "message":
+        return message(station, await readJson(req));
       case "set":
         return saveSet(station, await readJson(req));
       case "finish":
@@ -122,12 +125,14 @@ async function claim(station: StationRow, body: { code?: unknown }) {
   if (!used.length) throw new HttpError(400, "That code was already used");
 
   const now = new Date().toISOString();
+  await live().clearMessages(station.id).catch(() => {}); // a new connection starts with an empty Test tab
   await touch(current, { current_user_id: found.user_id, connected_at: now, last_activity_at: now });
   return json({ status: "in_use", user_name: await userName(found.user_id) });
 }
 
 async function commands(station: StationRow) {
   let s = await releaseIfIdle(await touch(station));
+  const connectedUser = s.current_user_id;
   const deadline = Date.now() + LONG_POLL_MS;
   for (;;) {
     const next = check(
@@ -153,7 +158,8 @@ async function commands(station: StationRow) {
       ) as unknown[];
       if (taken.length) return json({ command: { type: next.type, ...next.payload }, ...(await statusOf(s)) });
     }
-    if (Date.now() > deadline) return json({ command: null, ...(await statusOf(s)) });
+    // Also return early when someone connects or disconnects, so the station knows at once.
+    if (Date.now() > deadline || s.current_user_id !== connectedUser) return json({ command: null, ...(await statusOf(s)) });
     await sleep(POLL_EVERY_MS);
     s = (check(await db().from("stations").select("*").eq("id", s.id).single(), "reload station") as StationRow);
   }
@@ -167,6 +173,13 @@ async function liveData(station: StationRow, body: { metrics?: unknown; samples?
     .filter((r): r is unknown[] => Array.isArray(r) && r.length >= 3)
     .map((r) => [Number(r[0]) || 0, r[1] == null ? null : Number(r[1]), r[2] == null ? null : Number(r[2])]) as LiveChunk["samples"];
   const seq = await live().push(station.id, { ...metrics, at: Date.now() }, samples);
+  return json({ ok: true, seq });
+}
+
+async function message(station: StationRow, body: { text?: unknown }) {
+  if (!station.current_user_id) throw new HttpError(409, "Nobody is connected to this station");
+  const text = str(body.text, "text", 500);
+  const seq = await live().pushMessage(station.id, text);
   return json({ ok: true, seq });
 }
 
