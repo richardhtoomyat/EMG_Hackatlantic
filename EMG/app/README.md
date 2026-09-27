@@ -41,7 +41,7 @@ It never writes to the database itself: the signed-in browser saves the data.
 
 ```
 Workout screen ──start / next set / finish──►  Supabase Realtime  ──►  bridge.py ─► LibEMG ─► MyoWare (BLE)
-      ▲  saves sessions/sets rows                "myo:<code>"             │
+      ▲  saves sessions/sets rows                "myo:<account id>"        │
       └────────── live (5/s), set_complete, session_complete ◄────────────┘
 ```
 
@@ -58,13 +58,16 @@ Workout screen ──start / next set / finish──►  Supabase Realtime  ─�
 ### Every session
 
 ```bash
-python src/bridge.py              # real sensors
-python src/bridge.py --simulate   # no hardware: synthetic L/R signal with reps
+python src/bridge.py --email you@example.com   # first run: the account you sign in with
+python src/bridge.py                           # later runs (email saved in .env)
+python src/bridge.py --simulate                # no hardware: synthetic L/R signal with reps
 ```
 
-- It prints a **pairing code** (kept in `.pairing_code`). Enter it once on the
-  web app's **Workout** screen; the screen then shows *Laptop online* and which
-  sensors are live. `--new-code` makes a new code (you'll need to re-pair).
+- The connection is set up **from this terminal only** — nothing to enter on
+  the website. The bridge looks up the account for that email and joins its
+  channel; open the **Workout** screen signed in as the same account and it
+  shows *Laptop online* and which sensors are live. To record for another
+  account, run with a different `--email`.
 - **Start recording** creates the `sessions` row immediately and shows its
   **session ID** plus ready-to-run SQL. **Next set** saves that set's row;
   **Finish** writes the score/end time and final set data; **Cancel** deletes it.
@@ -110,9 +113,11 @@ python src/bridge.py --simulate   # no hardware: synthetic L/R signal with reps
 - **Supabase free plan:** Realtime allows 100 messages/s per project and 2 M
   per month. The bridge sends 5 batched `live` messages/s per recording (plus
   a status every 2 s), so several people can record at once.
-- **Security:** channels are public — anyone with the (public) anon key and
-  the pairing code could listen or send commands. Keep the code private; use
-  `--new-code` if it leaks. Private channels would need Realtime Authorization.
+- **Security:** channels are public and named after the account id, which is
+  not secret (profiles are publicly readable in demo mode), so someone
+  determined could listen to or send commands to a recording. Fine for a demo;
+  for real use, sign the bridge in and switch to private channels (Realtime
+  Authorization).
 
 ### Tests
 

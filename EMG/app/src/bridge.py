@@ -3,10 +3,11 @@
     python src/bridge.py              # real sensors (streamer.py + LibEMG)
     python src/bridge.py --simulate   # synthetic signal, no hardware needed
 
-How it talks to the web app (Supabase Realtime Broadcast, no database access):
-  * On first run it creates a pairing code (saved in .pairing_code). Enter it
-    once on the web app's Workout screen; both sides then share the channel
-    "myo:<code>".
+How it talks to the web app (Supabase Realtime Broadcast, no database writes):
+  * The connection is set up from this terminal only: give the email you sign
+    in with once (`--email you@example.com`, saved to .env as ATHLETE_EMAIL).
+    The bridge looks up that account and joins the channel "myo:<account id>";
+    the web app, signed in as the same account, joins it automatically.
   * Web app → bridge: start_session, next_set, finish_session, cancel_session,
     resend_summary.
   * Bridge → web app: status (heartbeat every 2 s), session_started, live
@@ -22,8 +23,9 @@ import argparse
 import asyncio
 import json
 import os
-import secrets
 import threading
+import urllib.parse
+import urllib.request
 import time
 from collections import deque
 from pathlib import Path
@@ -33,8 +35,7 @@ from recorder import PairNormalizer, RepThresholds, SessionRecorder
 from sources import LibEMGSource, SampleSource, SimulatedSource
 
 APP_DIR = Path(__file__).resolve().parents[1]
-PAIRING_FILE = APP_DIR / ".pairing_code"
-CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O/1/I/L
+ENV_FILE = APP_DIR / ".env"
 
 LOOP_HZ = 20  # read + process rate
 LIVE_HZ = 5  # broadcast rate (batched); keeps well inside the free plan's 100 msg/s
@@ -44,7 +45,7 @@ SENSOR_STALE_S = 2.0
 
 def load_env() -> tuple[str, str]:
     """SUPABASE_URL / SUPABASE_ANON_KEY from the environment or app/.env."""
-    env_file = APP_DIR / ".env"
+    env_file = ENV_FILE
     if env_file.exists():
         for line in env_file.read_text(encoding="utf-8").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
@@ -56,25 +57,38 @@ def load_env() -> tuple[str, str]:
     return url.rstrip("/"), key
 
 
-def pairing_code() -> str:
-    if PAIRING_FILE.exists():
-        code = PAIRING_FILE.read_text(encoding="utf-8").strip().upper()
-        if len(code) == 8 and all(c in CODE_ALPHABET for c in code):
-            return code
-    code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
-    PAIRING_FILE.write_text(code, encoding="utf-8")
-    return code
+def save_env_value(key: str, value: str) -> None:
+    """Add or replace KEY=value in app/.env (so the email is asked for only once)."""
+    lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    lines = [ln for ln in lines if not ln.strip().startswith(f"{key}=")] + [f"{key}={value}"]
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def pretty(code: str) -> str:
-    return f"{code[:4]}-{code[4:]}"
+def lookup_account(url: str, key: str, email: str) -> dict:
+    """Find the web app account for `email` in public.profiles (readable with the anon key)."""
+    query = urllib.parse.urlencode({"select": "id,name,first_name,last_name,role,email", "email": f"ilike.{email}"})
+    req = urllib.request.Request(f"{url}/rest/v1/profiles?{query}", headers={"apikey": key, "Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        rows = json.loads(resp.read().decode("utf-8"))
+    if not rows:
+        raise SystemExit(
+            f"No activateMyo account with email {email}. Sign up on the website first "
+            "(and make sure Webapp/supabase/signup_profiles.sql has been run)."
+        )
+    return rows[0]
+
+
+def display_name(account: dict) -> str:
+    full = " ".join(p for p in (account.get("first_name"), account.get("last_name")) if p)
+    return full or account.get("name") or account.get("email") or account["id"]
 
 
 class Bridge:
-    def __init__(self, source: SampleSource, code: str, thresholds: RepThresholds,
+    def __init__(self, source: SampleSource, account_id: str, account_label: str, thresholds: RepThresholds,
                  calibration: Optional[list[dict]] = None) -> None:
         self.source = source
-        self.code = code
+        self.topic = f"myo:{account_id}"
+        self.account_label = account_label
         self.thresholds = thresholds
         self.norm = PairNormalizer(calibration)
         self.session: Optional[SessionRecorder] = None
@@ -180,7 +194,7 @@ class Bridge:
 
         while True:
             client = AsyncRealtimeClient(f"{url}/realtime/v1", key, max_retries=10, initial_backoff=1.0)
-            channel = client.channel(f"myo:{self.code}")
+            channel = client.channel(self.topic)
             channel.on_broadcast("start_session", self._handler(self.on_start))
             channel.on_broadcast("next_set", self._handler(self.on_next_set))
             channel.on_broadcast("finish_session", self._handler(self.on_finish))
@@ -189,7 +203,7 @@ class Bridge:
             try:
                 await channel.subscribe()
                 self.channel, self.connected = channel, True
-                print(f"[Realtime] connected; channel myo:{self.code}", flush=True)
+                print(f"[Realtime] connected; channel {self.topic}", flush=True)
                 while client.is_connected:
                     await asyncio.sleep(1)
             except Exception as exc:
@@ -243,11 +257,11 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>activateMyo br
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>body{margin:0;background:#0b0e15;color:#eceae4;font:15px system-ui,sans-serif}
 main{max-width:900px;margin:0 auto;padding:24px}h1{font-weight:400;margin:0 0 4px}
-.code{font:600 34px ui-monospace,monospace;letter-spacing:4px;color:#7fb8c9}
+.code{font:600 22px system-ui,sans-serif;color:#7fb8c9;margin:4px 0 8px}
 .row{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}.pill{background:#1a1e2a;border-radius:999px;padding:6px 12px}
 .ok{color:#7fb8c9}.bad{color:#e07a5f}canvas{background:#11151e;border-radius:14px;padding:8px}</style></head>
-<body><main><h1>activateMyo bridge</h1><div>Pairing code — enter it on the web app's Workout screen:</div>
-<div class="code">__CODE__</div>
+<body><main><h1>activateMyo bridge</h1><div>Connected for this activateMyo account — open the Workout screen signed in as:</div>
+<div class="code">__ACCOUNT__</div>
 <div class="row" id="status"></div><canvas id="chart" height="110"></canvas></main>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
@@ -282,7 +296,9 @@ def start_flask(bridge: Bridge, port: int) -> None:
 
     @app.get("/")
     def index():  # type: ignore[no-untyped-def]
-        return PAGE.replace("__CODE__", pretty(bridge.code))
+        from html import escape
+
+        return PAGE.replace("__ACCOUNT__", escape(bridge.account_label))
 
     @app.get("/api/samples")
     def samples():  # type: ignore[no-untyped-def]
@@ -308,14 +324,14 @@ def load_tuning() -> tuple[RepThresholds, Optional[list[dict]]]:
     return th, calibration
 
 
-async def check_realtime(url: str, key: str, code: str) -> bool:
-    """Round-trip test: two clients on the pairing channel, one pings the other."""
+async def check_realtime(url: str, key: str, topic: str) -> bool:
+    """Round-trip test: two clients on a test channel, one pings the other."""
     from realtime import AsyncRealtimeClient
 
     got = asyncio.Event()
     a = AsyncRealtimeClient(f"{url}/realtime/v1", key, max_retries=2)
     b = AsyncRealtimeClient(f"{url}/realtime/v1", key, max_retries=2)
-    ca, cb = a.channel(f"myo:{code}"), b.channel(f"myo:{code}")
+    ca, cb = a.channel(topic), b.channel(topic)
     cb.on_broadcast("check", lambda m: got.set())
     try:
         await ca.subscribe()
@@ -339,29 +355,40 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--simulate", action="store_true", help="use a synthetic signal instead of the sensors")
     parser.add_argument("--port", type=int, default=5000, help="local Flask page port (0 = off)")
-    parser.add_argument("--new-code", action="store_true", help="generate a new pairing code")
+    parser.add_argument("--email", help="email of your activateMyo account (saved to .env for next time)")
     parser.add_argument("--check", action="store_true", help="test the Supabase Realtime connection and exit")
     args = parser.parse_args()
 
     url, key = load_env()
-    if args.new_code and PAIRING_FILE.exists():
-        PAIRING_FILE.unlink()
-    code = pairing_code()
+    # Realtime can be pointed elsewhere (e.g. a local test server); REST lookups always use SUPABASE_URL.
+    realtime_url = os.environ.get("SUPABASE_REALTIME_URL", url).rstrip("/")
     if args.check:
-        ok = asyncio.run(check_realtime(url, key, code))
+        ok = asyncio.run(check_realtime(realtime_url, key, f"myo:check-{os.getpid()}"))
         print("Realtime OK: messages go through Supabase." if ok else
               "Realtime FAILED: check SUPABASE_URL / SUPABASE_ANON_KEY, the network, and that Realtime is enabled.")
         raise SystemExit(0 if ok else 1)
+    email = (args.email or os.environ.get("ATHLETE_EMAIL") or "").strip()
+    if not email:
+        email = input("Email of your activateMyo account: ").strip()
+    if not email:
+        raise SystemExit("An account email is required (--email you@example.com).")
+    account = lookup_account(url, key, email)
+    if os.environ.get("ATHLETE_EMAIL", "").lower() != email.lower():
+        save_env_value("ATHLETE_EMAIL", email)
+    if (account.get("role") or "").lower() == "coach":
+        print("  Note: this is a coach account; recordings are saved to the signed-in account.", flush=True)
+
     thresholds, calibration = load_tuning()
     source: SampleSource = SimulatedSource() if args.simulate else LibEMGSource()
-    bridge = Bridge(source, code, thresholds, calibration)
+    label = f"{display_name(account)} ({account.get('email') or email})"
+    bridge = Bridge(source, account["id"], label, thresholds, calibration)
 
-    print(f"\n  Pairing code:  {pretty(code)}   (enter it on the Workout screen)\n", flush=True)
+    print(f"\n  Account: {label}\n  Open the Workout screen on the website, signed in as this account.\n", flush=True)
     if args.port:
         start_flask(bridge, args.port)
         print(f"  Local live chart: http://localhost:{args.port}\n", flush=True)
     try:
-        asyncio.run(bridge.run(url, key))
+        asyncio.run(bridge.run(realtime_url, key))
     except KeyboardInterrupt:
         print("\nBye.", flush=True)
 

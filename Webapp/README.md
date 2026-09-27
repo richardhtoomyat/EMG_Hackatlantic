@@ -78,9 +78,10 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    links are visible only to the people involved; links can only be created
    by redeeming a code (the script replaces every existing `coach_links`
    policy).
-8. **Live recording from the sensors** — run `EMG/app/src/bridge.py` on the
-   laptop with the MyoWare rig (see `EMG/app/README.md`), enter its pairing
-   code on the Workout screen, then Start → Next set → Finish. The session row
+8. **Live recording from the sensors** — on the laptop with the MyoWare rig
+   run `python src/bridge.py --email <your account email>` in `EMG/app` (see
+   `EMG/app/README.md`); the Workout screen, signed in as that account,
+   connects automatically. Then Start → Next set → Finish. The session row
    is created at Start (its ID and SQL to inspect it are shown on screen), each
    set is saved as it completes, and Finish writes the final summary
    (`src/lib/sensorLink.ts`, `src/components/LiveRecorder.tsx`).

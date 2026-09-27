@@ -4,7 +4,7 @@ import { useAuth } from "../auth/authContext";
 import { useRefreshData } from "../data/dataContext";
 import { EXERCISES } from "../data/mockData";
 import { sideLabels } from "../data/testSession";
-import { normalizeCode, prettyCode, useSensorLink } from "../lib/sensorLink";
+import { useSensorLink } from "../lib/sensorLink";
 import ActivationRing from "./ActivationRing";
 import { StatRows } from "./StatGrid";
 
@@ -14,8 +14,6 @@ export default function LiveRecorder() {
   const refresh = useRefreshData();
   const link = useSensorLink(user?.id ?? null, refresh);
   const [exerciseName, setExerciseName] = useState(Object.keys(EXERCISES)[0]);
-
-  if (!link.code) return <PairingCard onPair={link.setCode} />;
 
   const busy = link.phase === "starting" || link.phase === "recording" || link.phase === "finishing" || link.phase === "saving";
   const labels = sideLabels(link.exercise ?? exerciseName);
@@ -58,12 +56,7 @@ export default function LiveRecorder() {
             className="h-12 rounded-full bg-accent text-bg font-semibold disabled:opacity-50">
             Start recording
           </button>
-          {!link.online && (
-            <div className="text-xs text-muted">
-              Waiting for the laptop — run <code className="text-soft">python src/bridge.py</code> in EMG/app.{" "}
-              <button className="text-accent" onClick={() => link.setCode(null)}>Change code ({prettyCode(link.code)})</button>
-            </div>
-          )}
+          {!link.online && <ConnectHelp email={user?.email ?? "you@example.com"} />}
         </div>
       )}
 
@@ -176,31 +169,13 @@ function SessionIdPanel({ id }: { id: string }) {
   );
 }
 
-function PairingCard({ onPair }: { onPair: (code: string) => void }) {
-  const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+/** How to connect: everything happens in the laptop terminal. */
+function ConnectHelp({ email }: { email: string }) {
   return (
-    <div className="flex-grow flex flex-col">
-      <h2 className="font-serif font-light text-[22px]">Connect your sensors</h2>
-      <ol className="text-sm text-muted mt-3 list-decimal pl-5 flex flex-col gap-1">
-        <li>On the laptop with the MyoWare sensors, open <code className="text-soft">EMG/app</code>.</li>
-        <li>Run <code className="text-soft">python src/bridge.py</code> — it prints a pairing code.</li>
-        <li>Enter the code below (once per browser).</li>
-      </ol>
-      <form
-        className="flex gap-2 mt-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const code = normalizeCode(value);
-          if (!code) return setError("Codes look like ABCD-2345 (8 letters/digits).");
-          onPair(code);
-        }}
-      >
-        <input aria-label="Pairing code" value={value} onChange={(e) => setValue(e.target.value)} placeholder="ABCD-2345"
-          className="flex-1 h-12 rounded-xl bg-surface border border-line px-4 font-mono tracking-widest uppercase text-ink placeholder:text-muted" />
-        <button className="h-12 px-5 rounded-xl bg-accent text-bg font-semibold">Connect</button>
-      </form>
-      {error && <div role="alert" className="text-sm text-max mt-2">{error}</div>}
+    <div className="text-xs text-muted flex flex-col gap-1" data-testid="connect-help">
+      <div>Waiting for the laptop. On the computer with the sensors, in <code className="text-soft">EMG/app</code>:</div>
+      <code className="block bg-deep rounded-lg px-2.5 py-2 text-soft break-all">python src/bridge.py --email {email}</code>
+      <div>It connects to this account automatically (the email is remembered after the first run).</div>
     </div>
   );
 }

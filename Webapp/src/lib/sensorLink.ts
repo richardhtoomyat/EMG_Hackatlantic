@@ -2,8 +2,9 @@
  * Two-way link between the web app and the Python bridge on the athlete's
  * laptop (EMG/app/src/bridge.py) over Supabase Realtime Broadcast.
  *
- * Channel: "myo:<pairing code>" — the code is shown by the bridge and entered
- * once on the Workout screen. Protocol (see bridge.py):
+ * Channel: "myo:<account id>". The connection is set up from the laptop
+ * terminal only (`bridge.py --email you@example.com`); the web app joins the
+ * signed-in account's channel automatically. Protocol (see bridge.py):
  *   web → bridge  start_session, next_set, finish_session, cancel_session, resend_summary
  *   bridge → web  status (every 2 s), session_started, live (5/s), set_complete,
  *                 session_complete, error
@@ -23,7 +24,6 @@ import {
 import { sideLabels } from "../data/testSession";
 import { supabase } from "./supabase";
 
-const CODE_KEY = "activatemyo.pairingCode";
 const OFFLINE_AFTER_MS = 6000; // status arrives every 2 s
 const ACK_TIMEOUT_MS = 8000;
 const RETRY_MS = 2000;
@@ -50,24 +50,7 @@ export interface LiveData {
   completed_sets: number;
 }
 
-/** Accepts "abcd-2345", "ABCD 2345", "abcd2345" → "ABCD2345" (null if invalid). */
-export function normalizeCode(input: string): string | null {
-  const code = input.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(code) ? code : null;
-}
-
-export const prettyCode = (code: string) => `${code.slice(0, 4)}-${code.slice(4)}`;
-
-function readCode(): string | null {
-  try {
-    return localStorage.getItem(CODE_KEY);
-  } catch {
-    return null;
-  }
-}
-
 export function useSensorLink(athleteId: string | null, onSaved: () => Promise<void> | void) {
-  const [code, setCodeState] = useState<string | null>(readCode);
   const [device, setDevice] = useState<DeviceStatus | null>(null);
   const [lastSeen, setLastSeen] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -123,23 +106,11 @@ export function useSensorLink(athleteId: string | null, onSaved: () => Promise<v
     }, RETRY_MS);
   };
 
-  const setCode = (next: string | null) => {
-    try {
-      if (next) localStorage.setItem(CODE_KEY, next);
-      else localStorage.removeItem(CODE_KEY);
-    } catch {
-      /* per-browser convenience only */
-    }
-    setDevice(null);
-    setLastSeen(0);
-    setCodeState(next);
-  };
-
-  // Subscribe to the pairing channel.
+  // Subscribe to the signed-in account's channel.
   useEffect(() => {
-    if (!supabase || !code) return;
+    if (!supabase || !athleteId) return;
     const sb = supabase;
-    const ch = sb.channel(`myo:${code}`, { config: { broadcast: { self: false } } });
+    const ch = sb.channel(`myo:${athleteId}`, { config: { broadcast: { self: false } } });
     const mine = (p: { session_id?: string }) => !!p.session_id && p.session_id === sessionRef.current;
 
     ch.on("broadcast", { event: "status" }, ({ payload }) => {
@@ -194,7 +165,7 @@ export function useSensorLink(athleteId: string | null, onSaved: () => Promise<v
       channelRef.current = null;
       void sb.removeChannel(ch);
     };
-  }, [code]);
+  }, [athleteId]);
 
   // Tick so "online" goes stale when heartbeats stop.
   useEffect(() => {
@@ -231,7 +202,7 @@ export function useSensorLink(athleteId: string | null, onSaved: () => Promise<v
         void deleteSessionRow(id).catch(() => {});
         sessionRef.current = null;
         setSessionId(null);
-        fail("The laptop didn't respond. Is bridge.py running with this pairing code?");
+        fail("The laptop didn't respond. Is bridge.py running for this account?");
       }
     );
   };
@@ -271,5 +242,5 @@ export function useSensorLink(athleteId: string | null, onSaved: () => Promise<v
     go("idle"); // the last session ID stays visible until the next start
   };
 
-  return { code, setCode, online, device, phase, sessionId, exercise, live, savedSets, error, start, nextSet, finish, cancel, reset };
+  return { online, device, phase, sessionId, exercise, live, savedSets, error, start, nextSet, finish, cancel, reset };
 }
