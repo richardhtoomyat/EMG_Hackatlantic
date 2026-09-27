@@ -90,10 +90,11 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
      `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API; **server
      only — never a `VITE_` variable**) and `SUPABASE_URL` (or it falls back
      to `VITE_SUPABASE_URL`).
-   - Vercel → Storage / Marketplace → **Upstash for Redis** → create a free
-     database and connect it to this project (adds `KV_REST_API_URL` /
-     `KV_REST_API_TOKEN`). It carries the live signal for ~15 s; nothing
-     there is kept.
+   - Vercel → Storage → create a free **Redis** database and connect it to
+     this project. Either kind works: **Upstash for Redis** (adds
+     `KV_REST_API_URL` / `KV_REST_API_TOKEN`) or **Redis** (Redis Cloud; adds
+     `REDIS_URL`, also with a custom prefix). It carries the live signal for
+     ~15 s; nothing there is kept.
    - Redeploy.
 
    How it fits together (`api/` = Vercel functions, `src/lib/useStation.ts`,
@@ -101,7 +102,7 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
 
    ```
    phone ── /api/me/* (Supabase access token) ──► Vercel ── service role ──► Supabase
-   station ── /api/station/* (station key) ─────►   │   ◄── live data ──► Upstash (15 s)
+   station ── /api/station/* (station key) ─────►   │   ◄── live data ──► Redis (15 s)
    ```
 
    | Endpoint | Who | What |

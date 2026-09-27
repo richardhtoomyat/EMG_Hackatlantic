@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { createClient } from "redis";
 import { env } from "./env.js";
 import { HttpError } from "./http.js";
 
@@ -65,6 +66,46 @@ class UpstashStore implements LiveStore {
   }
 }
 
+/** Plain Redis over a redis:// connection (REDIS_URL), e.g. Vercel's "Redis" (Redis Cloud). */
+class TcpRedisStore implements LiveStore {
+  private client: ReturnType<typeof createClient>;
+  private ready: Promise<unknown> | null = null;
+  constructor(url: string) {
+    this.client = createClient({ url, socket: { connectTimeout: 5000, reconnectStrategy: (n) => Math.min(n * 200, 2000) } });
+    this.client.on("error", (err) => console.error("[live] redis error:", err instanceof Error ? err.message : err));
+  }
+  /** One connection per function instance, reused across requests. */
+  private async redis() {
+    if (!this.client.isOpen) this.ready ??= this.client.connect().finally(() => (this.ready = null));
+    if (this.ready) await this.ready;
+    return this.client;
+  }
+  private keys(id: string) {
+    return { m: `live:m:${id}`, c: `live:c:${id}`, s: `live:s:${id}` };
+  }
+  async push(id: string, metrics: Record<string, unknown>, samples: LiveChunk["samples"]) {
+    const r = await this.redis();
+    const k = this.keys(id);
+    const seq = await r.incr(k.s);
+    const m = r.multi().expire(k.s, TTL_S * 4).set(k.m, JSON.stringify(metrics), { EX: TTL_S });
+    if (samples.length) m.rPush(k.c, JSON.stringify({ seq, samples })).lTrim(k.c, -MAX_CHUNKS, -1).expire(k.c, TTL_S);
+    await m.exec();
+    return seq;
+  }
+  async since(id: string, since: number): Promise<LiveSnapshot> {
+    const r = await this.redis();
+    const k = this.keys(id);
+    const [m, list, s] = await Promise.all([r.get(k.m), r.lRange(k.c, 0, -1), r.get(k.s)]);
+    const chunks = list.map((c) => JSON.parse(c) as LiveChunk).filter((c) => c.seq > since);
+    return { metrics: m ? (JSON.parse(m) as Record<string, unknown>) : null, chunks, seq: Number(s ?? 0) };
+  }
+  async clear(id: string) {
+    const r = await this.redis();
+    const k = this.keys(id);
+    await r.del([k.m, k.c]);
+  }
+}
+
 /** Local tests only (single process). */
 class MemoryStore implements LiveStore {
   private data = new Map<string, { metrics: Record<string, unknown> | null; chunks: LiveChunk[]; seq: number }>();
@@ -96,7 +137,8 @@ export function live(): LiveStore {
     const e = env();
     if (e.memoryLiveStore) store = new MemoryStore();
     else if (e.redisUrl && e.redisToken) store = new UpstashStore(e.redisUrl, e.redisToken);
-    else throw new HttpError(503, "Live stream not configured: add Upstash Redis to the Vercel project");
+    else if (e.redisConnectionUrl) store = new TcpRedisStore(e.redisConnectionUrl);
+    else throw new HttpError(503, "Live stream not configured: connect a Redis database (Upstash or Redis) to the Vercel project");
   }
   return store;
 }

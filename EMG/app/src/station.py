@@ -332,7 +332,8 @@ class QrScanner:
         self.cv2 = cv2
         self.index, self.window = index, window
         self.cap: Any = None
-        self.detector = cv2.QRCodeDetector()
+        # The ArUco-based detector (OpenCV >= 4.8) finds codes the classic one misses.
+        self.detectors = [cv2.QRCodeDetector()] + ([cv2.QRCodeDetectorAruco()] if hasattr(cv2, "QRCodeDetectorAruco") else [])
         self.failed = False
 
     def open(self) -> bool:
@@ -359,11 +360,7 @@ class QrScanner:
         ok, frame = self.cap.read()
         if not ok:
             return None
-        text = ""
-        try:
-            text, points, _ = self.detector.detectAndDecode(frame)
-        except self.cv2.error:
-            points = None
+        text, points = decode_qr(self.detectors, frame, self.cv2.error)
         if self.window:
             if points is not None:
                 pts = points.astype(int).reshape(-1, 2)
@@ -372,6 +369,21 @@ class QrScanner:
             self.cv2.imshow("activateMyo station", frame)
             self.cv2.waitKey(1)
         return text if text and text.lower().startswith(QR_PREFIX) else None
+
+
+def decode_qr(detectors: list, frame: Any, cv_error: type = Exception) -> tuple[str, Any]:
+    """First detector that decodes the frame wins: (text, corner points)."""
+    points = None
+    for detector in detectors:
+        try:
+            text, pts, _ = detector.detectAndDecode(frame)
+        except cv_error:
+            continue
+        if pts is not None:
+            points = pts
+        if text:
+            return text, pts
+    return "", points
 
 
 # ---------------------------------------------------------------------- main
