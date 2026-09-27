@@ -1,6 +1,6 @@
 import type { MuscleId } from "../../data/types";
 
-export const SENSORS = ["MyoWareSensorL", "MyoWareSensorR"] as const;
+export const SENSORS = ["MyoWareSensorL", "MyLocalWareSensorR"] as const;
 export type SensorChannel = (typeof SENSORS)[number];
 export type SensorPlacements = Record<SensorChannel, MuscleId | null>;
 

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/authContext";
+import BodyMap from "../../components/BodyMap";
 import type { MuscleId } from "../../data/types";
 import { supabase } from "../../lib/supabase";
 import PassiveBaselineRecorder from "./PassiveBaselineRecorder";
 import StrainRecorder from "./StrainRecorder";
-import { MUSCLE_PLACEMENTS, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
+import { placementLabel, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 
 type BaselineChannel = { sample_count: number; median?: number; mad?: number };
 type SavedBaseline = {
@@ -21,10 +22,14 @@ const DEFAULT_PLACEMENTS: SensorPlacements = {
 export default function Playback() {
   const { user } = useAuth();
   const [placements, setPlacements] = useState<SensorPlacements>(DEFAULT_PLACEMENTS);
+  const [activeSensor, setActiveSensor] = useState<SensorChannel>(SENSORS[0]);
   const [baselines, setBaselines] = useState<Partial<Record<SensorChannel, BaselineChannel>>>({});
   const [loadingBaselines, setLoadingBaselines] = useState(true);
   const [baselineError, setBaselineError] = useState<string | null>(null);
   const activeSensors = SENSORS.filter((channel) => placements[channel] !== null);
+  const placementHighlights: Partial<Record<MuscleId, string>> = {};
+  if (placements.MyoWareSensorL) placementHighlights[placements.MyoWareSensorL] = "#C8202F";
+  if (placements.MyLocalWareSensorR) placementHighlights[placements.MyLocalWareSensorR] = "#D49A00";
 
   const loadBaselines = useCallback(async () => {
     if (!user || !supabase) {
@@ -88,36 +93,48 @@ export default function Playback() {
         <h1 className="font-serif font-light text-[27px] leading-tight">Recording playback</h1>
         <Link to="/" className="text-sm text-accent">Back</Link>
       </div>
-      <p className="text-sm text-muted mb-3">Choose where each sensor is placed. Disabled sensors are ignored.</p>
+      <p className="text-sm text-muted mb-3">Choose a sensor, then select its muscle on the chart. Disabled sensors are ignored.</p>
 
       <section className="bg-surface rounded-2xl p-3.5 my-2">
-        <div className="text-[11px] tracking-wider text-muted uppercase mb-2">Sensor placement</div>
-        {SENSORS.map((channel) => (
-          <label key={channel} className="block text-sm text-soft mb-3 last:mb-0">
-            <span className="block mb-1">{channel}</span>
-            <select
-              value={placements[channel] ?? "disabled"}
-              onChange={(event) => {
-                const value = event.target.value;
-                setPlacements((current) => ({
-                  ...current,
-                  [channel]: value === "disabled" ? null : (value as MuscleId),
-                }));
-              }}
-              className="w-full h-10 rounded-lg border border-line bg-bg px-3 text-ink"
+        <div className="text-[11px] tracking-wider text-muted uppercase mb-2">Selected sensor</div>
+        <div className="grid grid-cols-2 gap-2">
+          {SENSORS.map((channel) => (
+            <button
+              key={channel}
+              type="button"
+              onClick={() => setActiveSensor(channel)}
+              aria-pressed={activeSensor === channel}
+              className={`rounded-xl border p-2 text-left text-xs ${activeSensor === channel ? "border-accent bg-deep text-ink" : "border-line text-soft"}`}
             >
-              <option value="disabled">Disabled</option>
-              {MUSCLE_PLACEMENTS.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-            {placements[channel] !== null && !loadingBaselines && (
-              <span className="block text-xs text-muted mt-1">
-                {baselines[channel] ? "Baseline available" : "Baseline needed for this placement"}
-              </span>
-            )}
-          </label>
-        ))}
+              <span className="block font-semibold">{channel}</span>
+              <span className="block mt-1">{placementLabel(placements[channel])}</span>
+              {placements[channel] !== null && !loadingBaselines && (
+                <span className="block text-muted mt-1">
+                  {baselines[channel] ? "Baseline ready" : "Baseline needed"}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setPlacements((current) => ({ ...current, [activeSensor]: null }))}
+          className="text-xs text-accent mt-3"
+        >
+          Disable {activeSensor}
+        </button>
+        <div className="bg-[#FAFAFA] rounded-xl p-2 mt-3">
+          <BodyMap
+            muscles={{}}
+            highlights={placementHighlights}
+            onMuscleClick={(id: MuscleId) => setPlacements((current) => ({ ...current, [activeSensor]: id }))}
+            className="w-full h-auto block"
+          />
+        </div>
+        <div className="flex gap-4 text-[11px] text-muted mt-2">
+          <span><span className="inline-block w-2 h-2 rounded-full bg-[#C8202F] mr-1" />L sensor</span>
+          <span><span className="inline-block w-2 h-2 rounded-full bg-[#D49A00] mr-1" />R sensor</span>
+        </div>
         {loadingBaselines && <p className="text-xs text-muted mt-2">Checking saved baselines...</p>}
         {baselineError && <p role="alert" className="text-xs text-max mt-2">Could not check saved baselines: {baselineError}</p>}
         {activeSensors.length === 0 && <p className="text-xs text-muted mt-2">Select a placement for at least one sensor.</p>}
