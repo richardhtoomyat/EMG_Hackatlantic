@@ -12,9 +12,12 @@ from libemg.data_handler import OnlineDataHandler
 from dataclasses import dataclass
 
 try:  # Support both ``python src/script.py`` and package imports.
-    from .streamer import OnlineEMGStream, load_config
+    from ..data_access.streamer import OnlineEMGStream, load_config
 except ImportError:
-    from streamer import OnlineEMGStream, load_config
+    try:  # Support ``python src/run.py`` from the app directory.
+        from data_access.streamer import OnlineEMGStream, load_config
+    except ImportError:  # Support imports from the repository root.
+        from EMG.app.src.data_access.streamer import OnlineEMGStream, load_config
 
 
 SampleBatch = NDArray[np.float64]

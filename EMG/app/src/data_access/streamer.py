@@ -73,7 +73,7 @@ class StreamerConfig:
 
 def load_config(path: Path | None = None) -> StreamerConfig:
     """Read and validate BLE settings when the streamer is started."""
-    config_path = path or Path(__file__).resolve().parents[1] / "config.yml"
+    config_path = path or Path(__file__).resolve().parents[2] / "config.yml"
     with config_path.open("r", encoding="utf-8") as config_file:
         raw: dict[str, Any] = yaml.safe_load(config_file) or {}
 
