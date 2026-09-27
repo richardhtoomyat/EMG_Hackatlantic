@@ -329,3 +329,36 @@ export function useStationMessages(connectionKey: string | null) {
   }, [connectionKey]);
   return messages;
 }
+
+// ---------------------------------------------------------------------------
+const STATUS_POLL_MS = 10_000;
+
+/**
+ * Just the connected station (Today / Profile status), refreshed every 10 s.
+ * undefined = loading or disabled, null = not connected.
+ */
+export function useStationStatus(enabled: boolean): StationInfo | null | undefined {
+  const [station, setStation] = useState<StationInfo | null | undefined>(undefined);
+  useEffect(() => {
+    if (!enabled) {
+      setStation(undefined);
+      return;
+    }
+    let stopped = false;
+    const load = async () => {
+      try {
+        const r = await stationApi<{ station: StationInfo | null }>("station");
+        if (!stopped) setStation(r.station);
+      } catch {
+        if (!stopped) setStation(null);
+      }
+    };
+    void load();
+    const id = window.setInterval(() => void load(), STATUS_POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [enabled]);
+  return station;
+}

@@ -7,7 +7,9 @@ import StatGrid from "../components/StatGrid";
 import WeekBars from "../components/WeekBars";
 import { MuscleStatList } from "../components/StatGrid";
 import BodyMetricReminder from "../components/BodyMetricReminder";
-import { useAppData } from "../data/dataContext";
+import { useAppData, useDataSource } from "../data/dataContext";
+import { StationStatusPill } from "../components/StationStatus";
+import { useStationStatus } from "../lib/useStation";
 import { mergeExercises } from "../lib/muscleMap";
 import { isCoach } from "../data/roles";
 import { muscleLabel } from "../data/testSession";
@@ -17,6 +19,9 @@ export default function Today() {
   const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, TODAY_MUSCLES, VIEWING, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
     useAppData();
   const coach = isCoach(ATHLETE.role);
+  const source = useDataSource();
+  // Real station status for athletes (coaches don't connect to stations; demo mode keeps its mock pill).
+  const station = useStationStatus(source === "supabase" && !coach);
   const workoutsThisWeek = WEEK_SUMMARY.filter((d) => d.trained).length;
   const firstName = ATHLETE.name.split(" ")[0];
   const who = coach && VIEWING ? VIEWING.athleteName.split(" ")[0] : null; // coach viewing an athlete
@@ -33,12 +38,18 @@ export default function Today() {
           <div className="text-[11px] tracking-wider text-muted uppercase">
             {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
           </div>
-          <h1 className="font-serif font-light text-[27px] leading-tight">Good morning, {firstName}</h1>
+          <h1 className="font-serif font-light text-[27px] leading-tight" data-testid="greeting">
+            {greeting()}, {firstName}
+          </h1>
         </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface text-xs">
-          <span className={`w-2 h-2 rounded-full ${ATHLETE.sensorsConnected ? "bg-accent" : "bg-muted"}`} />
-          {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
-        </div>
+        {source === "supabase" ? (
+          !coach && <StationStatusPill station={station} />
+        ) : (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface text-xs">
+            <span className={`w-2 h-2 rounded-full ${ATHLETE.sensorsConnected ? "bg-accent" : "bg-muted"}`} />
+            {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
+          </div>
+        )}
       </div>
 
       <BodyMetricReminder />
@@ -52,9 +63,11 @@ export default function Today() {
         </Link>
       )}
 
-      <Link to="/test" className="block bg-surface rounded-2xl p-3.5 my-2 text-sm text-accent font-semibold">
-        Baseline and strain recordings
-      </Link>
+      {!coach && (
+        <Link to="/test" className="block bg-surface rounded-2xl p-3.5 my-2 text-sm text-accent font-semibold">
+          Baseline and strain recordings
+        </Link>
+      )}
 
       {READINESS ? (
         <ScoreCard label="Readiness Score" score={READINESS.score} description={READINESS.description} />
@@ -135,7 +148,7 @@ export default function Today() {
           { label: "Avg Activation", value: trainedToday ? `${TODAY_METRICS.avgActivationPct}%` : "—", color: "#7FB8C9" },
           { label: "Best Balance", value: trainedToday ? `${TODAY_METRICS.bestImbalancePct}% diff` : "—", color: "#7FB8C9" },
           { label: "Total Volume", value: trainedToday ? `${TODAY_METRICS.totalVolumeReps} reps` : "—", color: "#D9B26A" },
-          { label: "Fatigue", value: TODAY_METRICS.fatigueLabel, color: "#7FB8C9" },
+          // Fatigue is hidden until something measures it.
         ]}
       />
 
@@ -172,4 +185,12 @@ function muscleGroups(t: TodayMuscles) {
         color: state === "primary" ? "#C8202F" : "#F0B429",
       };
     });
+}
+
+/** "Good morning / afternoon / evening" by the device's local time. */
+function greeting(now = new Date()) {
+  const h = now.getHours();
+  if (h >= 5 && h < 12) return "Good morning";
+  if (h >= 12 && h < 17) return "Good afternoon";
+  return "Good evening";
 }

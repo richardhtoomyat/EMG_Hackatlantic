@@ -15,7 +15,9 @@ export default function WeekBars({ days }: WeekBarsProps) {
   return (
     <div className="flex items-end justify-between gap-[7px] h-[68px] mt-1 mb-0.5">
       {days.map((d, i) => {
-        const pct = d.isToday ? 22 : Math.max(10, Math.round((d.avgActivationScore / max) * 100));
+        // Today stays a dashed placeholder only until something is trained today.
+        const pending = d.isToday && !d.trained;
+        const pct = pending ? 22 : d.trained ? Math.max(10, Math.round((d.avgActivationScore / max) * 100)) : 10;
         return (
           <div key={i} className="flex-1 flex flex-col items-center justify-end h-full gap-1.5">
             <div className="w-full flex-grow flex items-end">
@@ -24,9 +26,11 @@ export default function WeekBars({ days }: WeekBarsProps) {
                 style={{
                   height: `${pct}%`,
                   minHeight: 4,
-                  background: d.isToday ? "#262C35" : d.trained ? "#7FB8C9" : "#1E232B",
-                  border: d.isToday ? "1.5px dashed #9AA0A8" : undefined,
+                  background: pending ? "#262C35" : d.trained ? "#7FB8C9" : "#1E232B",
+                  border: pending ? "1.5px dashed #9AA0A8" : d.isToday ? "1.5px solid #ECEAE4" : undefined,
                 }}
+                data-testid={d.isToday ? "today-bar" : undefined}
+                title={d.trained ? `Avg score ${d.avgActivationScore}` : undefined}
               />
             </div>
             <div className={`text-[10px] ${d.isToday ? "text-ink font-semibold" : "text-muted"}`}>

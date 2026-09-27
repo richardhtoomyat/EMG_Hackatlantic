@@ -52,6 +52,7 @@ export default function Session() {
   const ended = full?.endedAt ? new Date(full.endedAt) : null;
   const durationMin = started && ended ? Math.max(1, Math.round((ended.getTime() - started.getTime()) / 60000)) : null;
   const sides = sideAverages(s.sets);
+  const maxPeak = s.sets.length ? Math.max(...s.sets.map((x) => x.peakActivationPct)) : s.avgPeakActivationPct;
 
   return (
     <div className="flex-grow flex flex-col">
@@ -72,7 +73,9 @@ export default function Session() {
         items={[
           { label: "Total Reps", value: s.totalReps },
           { label: "Time Under Tension", value: mmss(s.totalTimeUnderTensionSec) },
-          { label: "Peak Activation", value: `${s.avgPeakActivationPct}%`, color: "#C8202F" },
+          // Highest single peak of any set; the average of the set peaks is shown separately.
+          { label: "Peak Activation", value: `${maxPeak}%`, color: "#C8202F" },
+          ...(s.sets.length > 1 ? [{ label: "Avg Set Peak", value: `${s.avgPeakActivationPct}%` }] : []),
           { label: "Muscle Balance", value: `${s.imbalancePct}% imbalance` },
         ]}
       />

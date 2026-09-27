@@ -5,6 +5,8 @@ import BodyMetricReminder from "../components/BodyMetricReminder";
 import { daysSince } from "../lib/bodyMetrics";
 import { useAppData, useDataSource, useRefreshData } from "../data/dataContext";
 import { isCoach, setMyRole } from "../data/roles";
+import { StationDeviceCard } from "../components/StationStatus";
+import { useStationStatus } from "../lib/useStation";
 
 export default function Profile() {
   const { ATHLETE } = useAppData();
@@ -13,6 +15,7 @@ export default function Profile() {
   const refresh = useRefreshData();
   const navigate = useNavigate();
   const coach = isCoach(ATHLETE.role);
+  const station = useStationStatus(source === "supabase" && !coach);
   const [roleMsg, setRoleMsg] = useState<string | null>(null);
   const [roleBusy, setRoleBusy] = useState(false);
 
@@ -97,6 +100,9 @@ export default function Profile() {
       </div>
 
       <h3 className="text-[15px] font-medium text-soft mt-5 mb-2.5">Connected Devices</h3>
+      {source === "supabase" ? (
+        <StationDeviceCard station={station} />
+      ) : (
       <div className="bg-surface rounded-2xl p-3.5 flex justify-between items-center">
         <div>
           <div className="font-medium">MyoWare Sensors</div>
@@ -107,6 +113,7 @@ export default function Profile() {
           {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
+      )}
       </>
       )}
 

@@ -13,6 +13,7 @@ import { ALL_MUSCLE_IDS } from "./mockData";
 import { ageFromBirthDate } from "../lib/bodyMetrics";
 import { getViewedAthlete } from "./coachSharing";
 import { buildMapFromPercentages, muscleMapForExercise } from "../lib/muscleMap";
+import { computeReadiness, readinessDescription } from "../lib/readiness";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import type {
@@ -320,7 +321,7 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
   };
 
   data.CURRENT_SESSION = full[0];
-  data.READINESS = readiness(full);
+  data.READINESS = readiness(sessions, full);
   data.WEEKLY_READINESS_TREND_PCT = weekOverWeek(full);
   data.TODAY_MUSCLES = todayMuscles(todays);
 
@@ -330,22 +331,17 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
 // ---------------------------------------------------------------------------
 // Today screen KPIs, from the athlete's own workouts (newest first).
 
-const READINESS_WINDOW_DAYS = 14;
-const READINESS_SESSIONS = 3;
-
-/**
- * Readiness = average activation score of the last (up to) 3 workouts from
- * the past 14 days. null ("No score yet") when there is none.
- */
-function readiness(sessions: Session[]): AppData["READINESS"] {
-  const since = isoDay(new Date(Date.now() - (READINESS_WINDOW_DAYS - 1) * DAY_MS));
-  const recent = sessions.filter((s) => s.date >= since).slice(0, READINESS_SESSIONS);
-  if (recent.length === 0) return null;
-  const score = avg(recent.map((s) => s.activationScore));
-  const basis = `Based on your last ${recent.length === 1 ? "workout" : `${recent.length} workouts`}`;
-  if (score >= 80) return { score, label: "Ready to push", description: `Ready to push · ${basis}` };
-  if (score >= 60) return { score, label: "Good to go", description: `Good to go · ${basis}` };
-  return { score, label: "Building up", description: `Building up — keep going · ${basis}` };
+/** Readiness from recent performance, rest and training load (lib/readiness.ts); null = no score yet. */
+function readiness(rows: SessionRow[], full: Session[]): AppData["READINESS"] {
+  const r = computeReadiness(
+    rows.map((row, i) => ({
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      score: full[i]?.activationScore ?? 0,
+      tutSec: full[i]?.totalTimeUnderTensionSec ?? 0,
+    }))
+  );
+  return r ? { score: r.score, label: r.label, description: readinessDescription(r) } : null;
 }
 
 /** Average session score of the last 7 days vs the 7 days before, in % (null if either week is empty). */

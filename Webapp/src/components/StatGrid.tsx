@@ -7,8 +7,9 @@ export interface StatItem {
 export default function StatGrid({ items }: { items: StatItem[] }) {
   return (
     <div className="grid grid-cols-2 gap-2">
-      {items.map((item) => (
-        <div key={item.label} className="bg-surface rounded-2xl p-3">
+      {items.map((item, i) => (
+        // An odd last tile spans the full row instead of leaving a gap.
+        <div key={item.label} className={`bg-surface rounded-2xl p-3 ${items.length % 2 === 1 && i === items.length - 1 ? "col-span-2" : ""}`}>
           <div className="text-[11px] text-muted">{item.label}</div>
           <div className="font-serif font-light text-[26px] mt-1" style={{ color: item.color ?? "#ECEAE4" }}>
             {item.value}
