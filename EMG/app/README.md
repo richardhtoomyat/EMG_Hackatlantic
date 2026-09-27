@@ -42,7 +42,7 @@ account. One user at a time; when they disconnect (or log out, or are idle for
 phone (web app, signed in) ──HTTPS──► Vercel API (/api/me/*) ──► Supabase: stations, connect_codes,
                                            ▲    │                  station_commands, sessions, sets
                      live data (not stored) │    │ commands (long-poll)
-                          Upstash Redis ◄───┘    ▼
+                            Redis (15 s) ◄───┘    ▼
                                 station.py (/api/station/*) ─► recorder ─► LibEMG ─► MyoWare (BLE)
 ```
 
@@ -51,7 +51,7 @@ phone (web app, signed in) ──HTTPS──► Vercel API (/api/me/*) ──►
   which account it belongs to (whoever is connected) and does fixed
   inserts/updates. The station never sees a database key or anyone's data.
 - **Raw envelope** + live metrics go out 5×/s while a user is connected and
-  are plotted on the phone. They pass through Upstash Redis and expire after
+  are plotted on the phone. They pass through Redis (Upstash or Redis Cloud) and expire after
   ~15 s — never saved. Saved: sessions and sets (processed metrics).
 
 ### Setup (once per PC)
