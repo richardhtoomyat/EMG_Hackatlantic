@@ -54,7 +54,7 @@ const TABS: { to: string; label: string; icon: ReactNode }[] = [
 
 export default function Layout() {
   return (
-    <div className="max-w-[420px] mx-auto bg-bg min-h-screen flex flex-col">
+    <div className="max-w-[420px] mx-auto min-h-screen flex flex-col">
       <header className="px-4 py-3 flex items-center justify-between">
         <div className="font-serif font-light text-xl">
           activate<span className="text-accent font-medium">Myo</span>

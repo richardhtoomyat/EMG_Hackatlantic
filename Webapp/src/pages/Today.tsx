@@ -5,6 +5,7 @@ import ScoreCard from "../components/ScoreCard";
 import StatGrid from "../components/StatGrid";
 import WeekBars from "../components/WeekBars";
 import { MuscleStatList } from "../components/StatGrid";
+import BodyMetricReminder from "../components/BodyMetricReminder";
 import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
 
@@ -35,6 +36,14 @@ export default function Today() {
           {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
+
+      <BodyMetricReminder />
+
+      <iframe
+        src="http://localhost:5000/"
+        title="BLE streamer connection status"
+        className="w-full h-20 rounded-xl border border-track bg-surface my-2"
+      />
 
       <ScoreCard label="Readiness Score" score={READINESS.score} description={READINESS.description} />
 
