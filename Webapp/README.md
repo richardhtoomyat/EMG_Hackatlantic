@@ -71,18 +71,12 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    `/body-metrics` first. Age is computed from the birth date, so it rises
    every birthday. In-app reminders (Today + Profile): weight every 20 days,
    height yearly while under 22 (`src/lib/bodyMetrics.ts`).
-7. **Live recording from the sensors** — run `EMG/app/src/bridge.py` on the
-   laptop with the MyoWare rig (see `EMG/app/README.md`), enter its pairing
-   code on the Workout screen, then Start → Next set → Finish. The session row
-   is created at Start (its ID and SQL to inspect it are shown on screen), each
-   set is saved as it completes, and Finish writes the final summary
-   (`src/lib/sensorLink.ts`, `src/components/LiveRecorder.tsx`).
-8. **Test data (optional)** — `supabase/test_data.sql` fills one account
+7. **Test data (optional)** — `supabase/test_data.sql` fills one account
    (set `target_email` at the top) with sessions aimed at each screen: today
    (Today + Session with coach feedback and L/R imbalance), this week
    (week bars, trends), last week (History only), and a session with no
    sets. `supabase/test_data_cleanup.sql` removes them again.
-9. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+8. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
    with password `demo-password-123`, plus sessions/sets.
 
