@@ -74,3 +74,103 @@ export async function saveSession(athleteId: string, s: NewSession): Promise<str
 
   return session.id;
 }
+
+// ---------------------------------------------------------------------------
+// Live recording (sensor bridge): the session row is created when recording
+// starts, each set is saved as it completes, and the row is finalised with the
+// bridge's summary at the end — so the data can be inspected in Supabase while
+// the workout is still in progress.
+
+/** A set as reported by the Python bridge (EMG/app/src/recorder.py). */
+export interface BridgeSet {
+  set_number: number;
+  reps: number;
+  time_under_tension_sec: number;
+  peak_activation_pct: number;
+  contraction_pct: number;
+  recovery_sec: number;
+  muscle_pct: Record<string, number>;
+}
+
+export interface BridgeSummary {
+  session_id: string;
+  exercise_name: string;
+  started_at: string; // ISO
+  ended_at: string; // ISO
+  activation_score: number;
+  sets: BridgeSet[];
+}
+
+const setRow = (sessionId: string, s: BridgeSet) => ({
+  session_id: sessionId,
+  set_number: s.set_number,
+  reps: s.reps,
+  time_under_tension_seconds: s.time_under_tension_sec,
+  peak_activation: s.peak_activation_pct,
+  contraction_pct: s.contraction_pct,
+  recovery_seconds: s.recovery_sec,
+  muscle_pct: s.muscle_pct,
+});
+
+/** Creates the sessions row when recording starts; its id is the recording's session ID. */
+export async function createSessionRow(athleteId: string, exerciseName: string): Promise<string> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { data, error } = await supabase
+    .from("sessions")
+    .insert({
+      athlete_id: athleteId,
+      exercise_name: exerciseName,
+      started_at: new Date().toISOString(),
+      muscle_map: muscleMapForExercise(exerciseName),
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+/** Saves one completed set; returns the sets row id. */
+export async function insertSetRow(sessionId: string, s: BridgeSet): Promise<string> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { data, error } = await supabase.from("sets").insert(setRow(sessionId, s)).select("id").single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+/**
+ * Writes the final summary: score and end time on the session, and every set
+ * (updating the rows saved during recording — e.g. rest time is only known
+ * once the next set starts — and inserting any that are missing).
+ */
+export async function finalizeSession(
+  sessionId: string,
+  summary: BridgeSummary,
+  savedSetIds: Map<number, string>
+): Promise<void> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { data, error } = await supabase
+    .from("sessions")
+    .update({ ended_at: summary.ended_at, activation_score: summary.activation_score })
+    .eq("id", sessionId)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("The session row could not be updated (run supabase/write_access.sql).");
+
+  for (const s of summary.sets) {
+    const rowId = savedSetIds.get(s.set_number);
+    if (rowId) {
+      const { error: e } = await supabase.from("sets").update(setRow(sessionId, s)).eq("id", rowId);
+      if (e) throw e;
+    } else {
+      savedSetIds.set(s.set_number, await insertSetRow(sessionId, s));
+    }
+  }
+}
+
+/** Cancel: remove the session row and any sets saved so far. */
+export async function deleteSessionRow(sessionId: string): Promise<void> {
+  if (!supabase) return;
+  await supabase.from("sets").delete().eq("session_id", sessionId);
+  const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
+  if (error) throw error;
+}

@@ -22,6 +22,18 @@ export function muscleLabel(id: MuscleId): string {
   return side === "l" ? `Left ${name}` : side === "r" ? `Right ${name}` : name;
 }
 
+/**
+ * The two sensors sit on the left and right side of the exercise's main muscle
+ * (the first left/right pair in its primary list), e.g. Squat → quads.
+ */
+export function sideLabels(exerciseName: string): { left: string; right: string } {
+  const primary = EXERCISES[exerciseName]?.primary ?? [];
+  const leftId = primary.find((id) => id.endsWith("-l"));
+  const rightId = leftId ? (leftId.replace(/-l$/, "-r") as MuscleId) : undefined;
+  if (!leftId || !rightId || !primary.includes(rightId)) return { left: "Left", right: "Right" };
+  return { left: muscleLabel(leftId), right: muscleLabel(rightId) };
+}
+
 export function generateTestSession(exerciseName: string, now = new Date()): NewSession {
   const ex = EXERCISES[exerciseName];
   if (!ex) throw new Error(`Unknown exercise: ${exerciseName}`);
