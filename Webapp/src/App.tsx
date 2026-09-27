@@ -14,6 +14,9 @@ import History from "./pages/History";
 import Coach from "./pages/Coach";
 import Profile from "./pages/Profile";
 import Test from "./pages/Test";
+import ChooseRole from "./pages/ChooseRole";
+import AthleteDetail from "./pages/AthleteDetail";
+import RequireRole from "./auth/RequireRole";
 
 export default function App() {
   return (
@@ -23,19 +26,31 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
+              path="/choose-role"
+              element={
+                <RequireAuth>
+                  <ChooseRole />
+                </RequireAuth>
+              }
+            />
+            <Route
               path="/body-metrics"
               element={
                 <RequireAuth>
-                  <BodyMetrics />
+                  <RequireRole>
+                    <BodyMetrics />
+                  </RequireRole>
                 </RequireAuth>
               }
             />
             <Route
               element={
                 <RequireAuth>
-                  <RequireBodyMetrics>
-                    <Layout />
-                  </RequireBodyMetrics>
+                  <RequireRole>
+                    <RequireBodyMetrics>
+                      <Layout />
+                    </RequireBodyMetrics>
+                  </RequireRole>
                 </RequireAuth>
               }
             >
@@ -45,6 +60,7 @@ export default function App() {
               <Route path="/session/:id" element={<Session />} />
               <Route path="/history" element={<History />} />
               <Route path="/coach" element={<Coach />} />
+              <Route path="/athlete/:id" element={<AthleteDetail />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/test" element={<Test />} />
             </Route>

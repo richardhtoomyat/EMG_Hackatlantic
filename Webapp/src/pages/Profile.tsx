@@ -1,13 +1,34 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import BodyMetricReminder from "../components/BodyMetricReminder";
 import { daysSince } from "../lib/bodyMetrics";
-import { useAppData } from "../data/dataContext";
+import { useAppData, useDataSource, useRefreshData } from "../data/dataContext";
+import { isCoach, setMyRole } from "../data/roles";
 
 export default function Profile() {
   const { ATHLETE } = useAppData();
   const { enabled, signOut } = useAuth();
+  const source = useDataSource();
+  const refresh = useRefreshData();
   const navigate = useNavigate();
+  const coach = isCoach(ATHLETE.role);
+  const [roleMsg, setRoleMsg] = useState<string | null>(null);
+  const [roleBusy, setRoleBusy] = useState(false);
+
+  const switchRole = async () => {
+    const next = coach ? "athlete" : "coach";
+    if (!window.confirm(`Switch this account to ${next}?`)) return;
+    setRoleBusy(true);
+    setRoleMsg(null);
+    try {
+      await setMyRole(next);
+      await refresh();
+    } catch (e) {
+      setRoleMsg(e instanceof Error ? e.message : String(e));
+    }
+    setRoleBusy(false);
+  };
 
   const onLogout = async () => {
     await signOut();
@@ -33,6 +54,26 @@ export default function Profile() {
         {ATHLETE.email && <div className="text-[13px] text-muted">{ATHLETE.email}</div>}
       </div>
 
+      {source === "supabase" && (
+        <>
+          <h3 className="text-[15px] font-medium text-soft mt-5 mb-2.5">Account type</h3>
+          <div className="bg-surface rounded-2xl p-3.5 flex justify-between items-center gap-3" data-testid="account-type">
+            <div>
+              <div className="font-medium">{coach ? "Coach" : "Athlete"}</div>
+              <div className="text-xs text-muted">
+                {coach ? "You follow athletes who share their code with you." : "You record workouts and can share them with a coach."}
+              </div>
+            </div>
+            <button onClick={() => void switchRole()} disabled={roleBusy} className="text-xs text-accent shrink-0 disabled:opacity-50">
+              Switch to {coach ? "athlete" : "coach"}
+            </button>
+          </div>
+          {roleMsg && <div role="alert" className="text-xs text-max mt-2">{roleMsg}</div>}
+        </>
+      )}
+
+      {!coach && (
+      <>
       <div className="mt-5">
         <BodyMetricReminder />
       </div>
@@ -66,6 +107,8 @@ export default function Profile() {
           {ATHLETE.sensorsConnected ? "Connected" : "Disconnected"}
         </div>
       </div>
+      </>
+      )}
 
       <Link to="/coach" className="flex items-center justify-center h-12 rounded-full border border-line mt-5">
         {ATHLETE.role?.toLowerCase() === "coach" ? "Your athletes" : "Share with Coach"}

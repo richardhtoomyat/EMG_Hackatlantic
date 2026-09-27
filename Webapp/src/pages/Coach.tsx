@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import {
   claimShareCode,
@@ -212,17 +212,19 @@ function CoachView({ userId }: { userId: string }) {
         people={people}
         empty="No athletes yet — ask one for their share code."
         highlight={VIEWING?.athleteId}
+        to={(p) => `/athlete/${p.personId}`}
         render={(p) => (
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-3 items-center shrink-0">
             {VIEWING?.athleteId === p.personId ? (
               <span className="text-xs text-accent">Viewing</span>
             ) : (
-              <button className="text-xs text-accent" onClick={() => void view(p.personId)}>View</button>
+              <button className="text-xs text-accent" onClick={() => void view(p.personId)}>Dashboard</button>
             )}
             <button className="text-xs text-max" onClick={() => void remove(p)}>Remove</button>
           </div>
         )}
       />
+      <p className="text-xs text-muted mt-2">Tap an athlete for their profile and workouts. "Dashboard" shows their training on Today and History.</p>
       {error && <div role="alert" className="text-sm text-max mt-3">{error}</div>}
     </div>
   );
@@ -233,11 +235,14 @@ function PeopleList({
   empty,
   highlight,
   render,
+  to,
 }: {
   people: LinkedPerson[] | null;
   empty: string;
   highlight?: string;
   render: (p: LinkedPerson) => ReactNode;
+  /** Makes the person (picture + name) a link, e.g. to the athlete's profile. */
+  to?: (p: LinkedPerson) => string;
 }) {
   if (people === null) return <div className="bg-surface rounded-2xl p-3.5 text-sm text-muted">Loading…</div>;
   if (people.length === 0) return <div className="bg-surface rounded-2xl p-3.5 text-sm text-muted">{empty}</div>;
@@ -246,7 +251,7 @@ function PeopleList({
       {people.map((p) => (
         <div key={p.linkId}
           className={`bg-surface rounded-2xl p-3.5 flex justify-between items-center gap-3 ${highlight === p.personId ? "border border-accent/50" : ""}`}>
-          <div className="flex items-center gap-3 min-w-0">
+          <PersonLink to={to?.(p)}>
             {p.avatarUrl ? (
               <img src={p.avatarUrl} alt="" referrerPolicy="no-referrer" className="w-9 h-9 rounded-full object-cover" />
             ) : (
@@ -256,13 +261,22 @@ function PeopleList({
             )}
             <div className="min-w-0">
               <div className="font-medium truncate">{p.name}</div>
-              <div className="text-xs text-muted">Linked {since(p.linkedSince)}</div>
+              <div className="text-xs text-muted">Linked {since(p.linkedSince)}{to ? " · Profile ›" : ""}</div>
             </div>
-          </div>
+          </PersonLink>
           {render(p)}
         </div>
       ))}
     </div>
+  );
+}
+
+function PersonLink({ to, children }: { to?: string; children: ReactNode }) {
+  const cls = "flex items-center gap-3 min-w-0";
+  return to ? (
+    <Link to={to} className={cls} data-testid="person-link">{children}</Link>
+  ) : (
+    <div className={cls}>{children}</div>
   );
 }
 

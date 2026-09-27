@@ -4,9 +4,24 @@ import ActivationRing from "../components/ActivationRing";
 import StationRecorder from "../components/StationRecorder";
 import { StatRows } from "../components/StatGrid";
 import { useAppData } from "../data/dataContext";
+import { isCoach } from "../data/roles";
 
 export default function Workout() {
   const { enabled, user } = useAuth();
+  const { ATHLETE } = useAppData();
+  if (enabled && user && isCoach(ATHLETE.role)) {
+    return (
+      <div className="flex-grow flex flex-col">
+        <h2 className="font-serif font-light text-[22px]">Workouts are recorded by athletes</h2>
+        <p className="text-sm text-muted mt-2">
+          As a coach you see your athletes' workouts on their profiles, and on Today and History when viewing their dashboard.
+        </p>
+        <Link to="/coach" className="flex items-center justify-center h-12 rounded-full bg-accent text-bg font-semibold mt-5">
+          Your athletes
+        </Link>
+      </div>
+    );
+  }
   if (enabled && user) {
     return (
       <StationRecorder />

@@ -213,6 +213,8 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
     heightUpdatedAt: profile?.height_updated_at ?? null,
     // select("*") only returns birth_date once body_metrics.sql has run.
     bodyMetricsEnabled: !!profile && "birth_date" in profile,
+    // Only asked once roles.sql has added role_selected_at (and a profile row exists).
+    roleSelected: !profile || !("role_selected_at" in profile) || !!(profile as { role_selected_at?: string | null }).role_selected_at,
   };
 
   // Athletes see their own training; coaches see one of their linked athletes

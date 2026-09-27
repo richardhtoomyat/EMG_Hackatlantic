@@ -9,10 +9,12 @@ import { MuscleStatList } from "../components/StatGrid";
 import BodyMetricReminder from "../components/BodyMetricReminder";
 import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
+import { isCoach } from "../data/roles";
 
 export default function Today() {
   const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, VIEWING, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
     useAppData();
+  const coach = isCoach(ATHLETE.role);
   const workoutsThisWeek = WEEK_SUMMARY.filter((d) => d.trained).length;
   const todayDate = WEEK_SUMMARY.find((d) => d.isToday)?.date;
   const firstName = ATHLETE.name.split(" ")[0];
@@ -101,10 +103,10 @@ export default function Today() {
       />
 
       <Link
-        to="/workout"
+        to={coach ? (VIEWING ? `/athlete/${VIEWING.athleteId}` : "/coach") : "/workout"}
         className="flex items-center justify-center h-12 rounded-full bg-accent text-bg font-semibold mt-5"
       >
-        Start Workout
+        {coach ? (VIEWING ? `${VIEWING.athleteName.split(" ")[0]}'s profile` : "Your athletes") : "Start Workout"}
       </Link>
     </div>
   );

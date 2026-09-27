@@ -102,6 +102,8 @@ export interface AthleteProfile {
   heightUpdatedAt?: string | null;
   /** False until supabase/body_metrics.sql has added the columns (setup/reminders stay off). */
   bodyMetricsEnabled?: boolean;
+  /** False until the user has chosen athlete / coach (supabase/roles.sql); Google sign-ups choose after sign-in. */
+  roleSelected?: boolean;
   heightLabel: string;
   weightLabel: string;
   age: number;

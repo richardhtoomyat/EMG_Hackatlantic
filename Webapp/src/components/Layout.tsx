@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import type { ReactNode } from "react";
+import { useAppData } from "../data/dataContext";
+import { isCoach } from "../data/roles";
 
 const TABS: { to: string; label: string; icon: ReactNode }[] = [
   {
@@ -63,6 +65,12 @@ const TABS: { to: string; label: string; icon: ReactNode }[] = [
 ];
 
 export default function Layout() {
+  const { ATHLETE } = useAppData();
+  const coach = isCoach(ATHLETE.role);
+  // Coaches don't record their own workouts; their "Coach" tab is the athlete list.
+  const tabs = TABS.filter((t) => !(coach && t.to === "/workout")).map((t) =>
+    coach && t.to === "/coach" ? { ...t, label: "Athletes" } : t
+  );
   return (
     <div className="max-w-[420px] mx-auto min-h-screen flex flex-col">
       <header className="px-4 py-3 flex items-center justify-between">
@@ -76,7 +84,7 @@ export default function Layout() {
       </main>
 
       <nav className="flex justify-around border-t border-track py-2.5">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}

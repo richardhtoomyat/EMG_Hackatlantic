@@ -78,6 +78,19 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    links are visible only to the people involved; links can only be created
    by redeeming a code (the script replaces every existing `coach_links`
    policy).
+7b. **Athlete / coach roles** — run `supabase/roles.sql` (after
+   `signup_profiles.sql` and `coach_sharing.sql`). Every account must choose
+   athlete or coach: the email sign-up form asks up front; Google sign-ups
+   (and existing accounts that never chose) get a **/choose-role** screen
+   before anything else, then athletes do the body-metrics setup.
+   `set_my_role()` is the only way to set it (the role column isn't directly
+   editable); it can be switched later on Profile only while the account has
+   no coach links. Coaches: no Workout tab, an **Athletes** tab (add by share
+   code, tap an athlete for `/athlete/:id` — profile, body metrics, last 7
+   days, workouts that open the full session — or "Dashboard" to see Today /
+   History as that athlete). Linked coaches may read their athletes'
+   profiles and EMG recordings (calibrations, strain, per-set curves);
+   athletes see only their own data. Only athletes can create share codes.
 8. **Sensor stations (live recording)** — a PC with the MyoWare rig runs
    `python src/station.py` (`EMG/app`, see `EMG/app/README.md`) and is shared:
    a user signs in on their phone, opens **Workout → Show QR code**, and the
