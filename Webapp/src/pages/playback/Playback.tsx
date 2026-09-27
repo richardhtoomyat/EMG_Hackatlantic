@@ -6,7 +6,7 @@ import type { MuscleId } from "../../data/types";
 import { supabase } from "../../lib/supabase";
 import PassiveBaselineRecorder from "./PassiveBaselineRecorder";
 import StrainRecorder, { type StrainRecording, type StrainResult } from "./StrainRecorder";
-import { placementLabel, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
+import { canonicalChannel, placementLabel, SENSORS, withCanonicalKeys, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 
 type BaselineChannel = { sample_count: number; median?: number; mad?: number };
 type SavedBaseline = {
@@ -18,12 +18,15 @@ type SavedStrain = { id: string; created_at: string; raw_data: StrainResult };
 function normalizeStrainResult(raw: unknown): StrainResult | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
-  if (Array.isArray(value.recordings)) return value as unknown as StrainResult;
+  if (Array.isArray(value.recordings)) {
+    const result = value as unknown as StrainResult;
+    return { ...result, recordings: result.recordings.map((r) => ({ ...r, channel: canonicalChannel(r.channel) })) };
+  }
   if (typeof value.channel === "string" && Array.isArray(value.readings)) {
     const oldReadings = value.readings as StrainRecording["readings"];
     return {
       recordings: [{
-        channel: value.channel,
+        channel: canonicalChannel(value.channel),
         muscle_id: (typeof value.muscle_id === "string" ? value.muscle_id : "f-pec-r") as StrainRecording["muscle_id"],
         baseline: typeof value.baseline === "number" ? value.baseline : 0,
         duration_s: typeof value.duration_s === "number" ? value.duration_s : 0,
@@ -37,7 +40,7 @@ function normalizeStrainResult(raw: unknown): StrainResult | null {
 
 const DEFAULT_PLACEMENTS: SensorPlacements = {
   MyoWareSensorL: null,
-  MyLocalWareSensorR: null,
+  MyoWareSensorR: null,
 };
 
 export default function Playback() {
@@ -54,7 +57,7 @@ export default function Playback() {
   const activeSensors = SENSORS.filter((channel) => placements[channel] !== null);
   const placementHighlights: Partial<Record<MuscleId, string>> = {};
   if (placements.MyoWareSensorL) placementHighlights[placements.MyoWareSensorL] = "#C8202F";
-  if (placements.MyLocalWareSensorR) placementHighlights[placements.MyLocalWareSensorR] = "#D49A00";
+  if (placements.MyoWareSensorR) placementHighlights[placements.MyoWareSensorR] = "#D49A00";
 
   const loadBaselines = useCallback(async () => {
     if (!user || !supabase) {
@@ -78,8 +81,12 @@ export default function Playback() {
 
     const latest: Partial<Record<SensorChannel, BaselineChannel>> = {};
     for (const row of data ?? []) {
-      const saved = row.raw_data as unknown as SavedBaseline;
-      if (!saved?.channels || !saved.placements) continue;
+      const raw = row.raw_data as unknown as SavedBaseline;
+      const saved: SavedBaseline = {
+        channels: withCanonicalKeys(raw?.channels),
+        placements: withCanonicalKeys(raw?.placements) as SavedBaseline["placements"],
+      };
+      if (!saved.channels || !saved.placements) continue;
       for (const channel of SENSORS) {
         const placement = placements[channel];
         const stats = saved.channels[channel];
