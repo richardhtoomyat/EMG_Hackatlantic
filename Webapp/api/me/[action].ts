@@ -173,7 +173,7 @@ async function command(user: AuthUser, body: Record<string, unknown>) {
 
 /**
  * Baseline / strain recording on the station (the Test tab's recording lab).
- * The station records, computes the result like run.py and saves it to
+ * The station records, computes the result (EMG/app/src/lab.py) and saves it to
  * emg_recordings for the connected user via /api/station/recording.
  *   start  {mode: "baseline", placements}                   placements: {sensor: muscle id | null}
  *   start  {mode: "strain", channels: [{channel, muscle_id, median, mad}]}

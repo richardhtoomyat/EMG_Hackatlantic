@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import BodyMap from "../../components/BodyMap";
 import { useAuth } from "../../auth/authContext";
 import { uploadRecording } from "./recordingStorage";
-import { localTransport, type RecorderTransport } from "./recorderTransport";
+import type { RecorderTransport } from "./recorderTransport";
 import { MUSCLE_PLACEMENTS, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 import type { MuscleId } from "../../data/types";
 
@@ -25,7 +25,7 @@ type Props = {
   historicalTimestamp: string | null;
   onRecordingStart: () => void;
   onSaved: () => void;
-  transport?: RecorderTransport;
+  transport: RecorderTransport;
 };
 
 export default function StrainRecorder({
@@ -36,7 +36,7 @@ export default function StrainRecorder({
   historicalTimestamp,
   onRecordingStart,
   onSaved,
-  transport = localTransport,
+  transport,
 }: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);

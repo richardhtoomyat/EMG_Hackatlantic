@@ -228,7 +228,7 @@ async function profile(station: StationRow, body: Record<string, unknown>) {
 
 /**
  * Kiril's baseline (type 0) / strain (type 1) recordings, computed on the
- * station, saved for the connected user in the same shape run.py returns
+ * station (EMG/app/src/lab.py), saved for the connected user
  * (the Playback / Test tab code reads them back).
  */
 const MAX_RECORDING_BYTES = 3_500_000; // Vercel's request limit is 4.5 MB

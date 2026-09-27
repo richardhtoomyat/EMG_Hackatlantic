@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/authContext";
 import { uploadRecording } from "./recordingStorage";
-import { localTransport, type PassiveSummary, type RecorderTransport } from "./recorderTransport";
+import type { PassiveSummary, RecorderTransport } from "./recorderTransport";
 import { SENSORS, type SensorPlacements } from "./sensorConfig";
 
 type SavedBaseline = PassiveSummary & { placements: SensorPlacements };
 
-type Props = { placements: SensorPlacements; onSaved: () => Promise<void>; transport?: RecorderTransport };
+type Props = { placements: SensorPlacements; onSaved: () => Promise<void>; transport: RecorderTransport };
 
-export default function PassiveBaselineRecorder({ placements, onSaved, transport = localTransport }: Props) {
+export default function PassiveBaselineRecorder({ placements, onSaved, transport }: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);

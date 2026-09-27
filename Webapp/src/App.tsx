@@ -13,7 +13,6 @@ import Session from "./pages/Session";
 import History from "./pages/History";
 import Coach from "./pages/Coach";
 import Profile from "./pages/Profile";
-import Playback from "./pages/playback/Playback";
 import Test from "./pages/Test";
 
 export default function App() {
@@ -46,7 +45,6 @@ export default function App() {
               <Route path="/history" element={<History />} />
               <Route path="/coach" element={<Coach />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="/playback" element={<Playback />} />
               <Route path="/test" element={<Test />} />
             </Route>
             {/* e.g. "#access_token=…" while supabase-js finishes a Google / email-link sign-in */}

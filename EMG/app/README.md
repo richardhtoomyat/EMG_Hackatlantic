@@ -107,10 +107,10 @@ lines are kept ~10 minutes in Redis and wiped when the user disconnects.
 Codes are single-use and expire after 2 minutes.
 
 **Baseline & strain on the Test tab.** Kiril's baseline / strain recording
-(originally `run.py` on `localhost:5000`) also runs through the station: on the
+(originally `run.py` on `localhost:5000`, now removed) runs through the station: on the
 phone's **Test** tab, pick each sensor's muscle, press *Start recording
 baseline* (5 s, relaxed), then *Start strain recording* / *Stop*. The station
-records the raw envelope and computes the same numbers as `run.py`
+records the raw envelope and computes the same numbers as `run.py` did
 (`src/lab.py`: per-sensor median + MAD at rest; strain = signal above
 median + 3·MAD, as % of that sensor's peak), and Vercel saves them to
 `emg_recordings` for the connected user. Sensor names come from `config.yml`.
@@ -125,7 +125,7 @@ median + 3·MAD, as % of that sensor's peak), and Vercel saves them to
 
 ### Things to watch when running LibEMG + the MyoWare rig
 
-- **Run one reader at a time.** `data_access/streamer.py`'s own `__main__`, `run.py` and
+- **Run one reader at a time.** `data_access/streamer.py`'s own `__main__` and
   `station.py` each start a BLE streamer process. LibEMG lets the second one attach to the
   existing shared-memory buffer ("emg already exists in shared memory"), but
   each MyoWare shield accepts only one BLE connection, so two streamers fight

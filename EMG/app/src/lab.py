@@ -1,8 +1,8 @@
 """Baseline and strain recordings (Kiril's recording feature) for station.py.
 
-Same maths and output shape as run.py (`/end_passive`, `/end_strain`) and
-features/muscle_activation_recording.py, so the web app stores and plays them
-back the same way:
+Same maths and output shape as Kiril's original run.py (`/end_passive`,
+`/end_strain`), which this replaces, so recordings saved by either play back
+the same way:
 
   * baseline: per sensor, the median and MAD (median absolute deviation) of the
     relaxed-muscle signal.

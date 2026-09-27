@@ -1,4 +1,4 @@
-"""lab.py must give the same numbers as Kiril's run.py / muscle_activation_recording.py."""
+"""lab.py must give the same numbers as Kiril's original run.py / muscle_activation_recording.py (logic reproduced below)."""
 
 import os
 import random

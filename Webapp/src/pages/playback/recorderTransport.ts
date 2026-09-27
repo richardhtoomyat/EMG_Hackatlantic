@@ -1,9 +1,7 @@
 /**
- * How the baseline / strain recorders reach the sensors:
- *   localTransport   — run.py on this computer (http://localhost:5000); the browser saves the result.
- *   stationTransport — the QR-connected station (via /api/me/command); the station
- *                      computes the result and Vercel saves it to emg_recordings,
- *                      so here we only wait for that row to appear.
+ * How the baseline / strain recorders reach the sensors: the QR-connected
+ * station (via /api/me/command). The station computes the result (src/lab.py)
+ * and Vercel saves it to emg_recordings, so here we only wait for that row.
  */
 import { stationApi } from "../../lib/stationApi";
 import { supabase } from "../../lib/supabase";
@@ -25,33 +23,13 @@ export type StrainChannel = {
 };
 
 export interface RecorderTransport {
-  kind: "local" | "station";
+  kind: "station";
   startBaseline(placements: SensorPlacements): Promise<void>;
   /** saved = the recording is already in Supabase (station); otherwise the caller uploads it. */
   stopBaseline(): Promise<{ summary: PassiveSummary; saved: boolean }>;
   startStrain(channels: StrainChannel[]): Promise<void>;
   stopStrain(): Promise<{ result: StrainResult; saved: boolean }>;
 }
-
-// ---------------------------------------------------------------- run.py
-async function post<T>(path: string, body?: unknown, fallback = "Request failed"): Promise<T> {
-  const response = await fetch(`http://localhost:5000/${path}`, {
-    method: "POST",
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? fallback);
-  return result as T;
-}
-
-export const localTransport: RecorderTransport = {
-  kind: "local",
-  startBaseline: async () => void (await post("start_passive", undefined, "Recording request failed")),
-  stopBaseline: async () => ({ summary: await post<PassiveSummary>("end_passive", undefined, "Could not stop recording"), saved: false }),
-  startStrain: async (channels) => void (await post("start_strain", { channels }, "Could not start strain recording")),
-  stopStrain: async () => ({ result: await post<StrainResult>("end_strain", undefined, "Could not stop strain recording"), saved: false }),
-};
 
 // ---------------------------------------------------------------- station
 const SAVE_TIMEOUT_MS = 30_000;
