@@ -32,8 +32,9 @@ class LibEMGSource:
         self.config = load_config()
         self.handler = get_online_handler()
         self.missing = missing_value
-        self.dt = 1.0 / nominal_rate_hz
+        self.dt = 1.0 / nominal_rate_hz  # only used for the very first batch
         self.last_count = 0
+        self.last_read: Optional[float] = None
 
     def read(self) -> list[Sample]:
         data, count = self.handler.get_data()
@@ -44,13 +45,18 @@ class LibEMGSource:
             return []
         rows = emg[:new][::-1]  # LibEMG buffers are newest-first
         now = time.monotonic()
+        # The buffer carries no timestamps: spread this batch evenly over the time
+        # since the previous read, so times stay increasing whatever rate the
+        # shields actually send at (the first batch assumes the nominal rate).
+        start = self.last_read if self.last_read is not None else now - new * self.dt
+        step = (now - start) / new
+        self.last_read = now
         out: list[Sample] = []
         for i, row in enumerate(rows):
             vals = [None if v == self.missing else float(v) for v in row]
             left = vals[0] if len(vals) > 0 else None
             right = vals[1] if len(vals) > 1 else None
-            # The buffer carries no timestamps; spread rows evenly up to now.
-            out.append((now - (new - 1 - i) * self.dt, left, right))
+            out.append((start + (i + 1) * step, left, right))
         return out
 
 

@@ -114,7 +114,7 @@ def make_libemg_source(handler: FakeHandler):
     from sources import LibEMGSource
 
     src = LibEMGSource.__new__(LibEMGSource)  # skip starting BLE / libemg
-    src.handler, src.missing, src.dt, src.last_count = handler, -1.0, 0.05, 0
+    src.handler, src.missing, src.dt, src.last_count, src.last_read = handler, -1.0, 0.05, 0, None
     return src
 
 
@@ -138,3 +138,20 @@ def test_libemg_source_caps_at_buffer_size():
     for i in range(12):  # more rows than the buffer holds between reads
         h.push(i, i)
     assert [l for _, l, _ in src.read()] == [7, 8, 9, 10, 11]
+
+
+def test_libemg_source_times_stay_increasing_at_any_rate():
+    import time as _time
+
+    h = FakeHandler(rows=500)
+    src = make_libemg_source(h)
+    times = []
+    for _ in range(4):  # ~100 Hz shields read every 50 ms: 5 rows per read
+        for _ in range(5):
+            h.push(1, 1)
+        times += [t for t, _, _ in src.read()]
+        _time.sleep(0.05)
+    assert len(times) == 20
+    assert all(b > a for a, b in zip(times, times[1:]))
+    gaps = [b - a for a, b in zip(times[5:], times[6:])]
+    assert all(0.004 < g < 0.03 for g in gaps)  # ~10 ms apart, not 50 ms
