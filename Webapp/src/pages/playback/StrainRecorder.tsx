@@ -6,7 +6,7 @@ import { MUSCLE_PLACEMENTS, SENSORS, type SensorChannel, type SensorPlacements }
 import type { MuscleId } from "../../data/types";
 
 type StrainReading = { time_s: number; raw: number; strain_pct: number };
-type StrainRecording = {
+export type StrainRecording = {
   channel: string;
   muscle_id: MuscleId;
   baseline: number;
@@ -14,15 +14,27 @@ type StrainRecording = {
   sample_count: number;
   readings: StrainReading[];
 };
-type StrainResult = { recordings: StrainRecording[] };
+export type StrainResult = { recordings: StrainRecording[] };
 type BaselineChannel = { sample_count: number; median?: number; mad?: number };
 type Props = {
   placements: SensorPlacements;
   baselines: Partial<Record<SensorChannel, BaselineChannel>>;
   canStart: boolean;
+  historicalData: StrainResult | null;
+  historicalTimestamp: string | null;
+  onRecordingStart: () => void;
+  onSaved: () => void;
 };
 
-export default function StrainRecorder({ placements, baselines, canStart }: Props) {
+export default function StrainRecorder({
+  placements,
+  baselines,
+  canStart,
+  historicalData,
+  historicalTimestamp,
+  onRecordingStart,
+  onSaved,
+}: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,7 +66,16 @@ export default function StrainRecorder({ placements, baselines, canStart }: Prop
     if (playing && data && index >= maxIndex) setPlaying(false);
   }, [playing, data, index, maxIndex]);
 
+  useEffect(() => {
+    if (!historicalData) return;
+    setData(historicalData);
+    setIndex(0);
+    setPlaying(false);
+    setSaved(true);
+  }, [historicalData]);
+
   const start = async () => {
+    onRecordingStart();
     setBusy(true);
     setError(null);
     try {
@@ -98,6 +119,7 @@ export default function StrainRecorder({ placements, baselines, canStart }: Prop
       if (!user) throw new Error("Sign in to save this strain recording");
       await uploadRecording(user.id, 1, result);
       setSaved(true);
+      onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -125,6 +147,9 @@ export default function StrainRecorder({ placements, baselines, canStart }: Prop
       </button>
       {error && <p role="alert" className="text-xs text-max mt-2">{error}</p>}
       {saved && <p className="text-xs text-accent mt-2">Strain recording saved to Supabase.</p>}
+      {historicalTimestamp && saved && (
+        <p className="text-xs text-muted mt-2">Selected recording from {new Date(historicalTimestamp).toLocaleString()}</p>
+      )}
       {data && data.recordings.length > 0 && (
         <>
           <div className="bg-[#FAFAFA] rounded-xl p-2 mt-3">

@@ -5,7 +5,7 @@ import BodyMap from "../../components/BodyMap";
 import type { MuscleId } from "../../data/types";
 import { supabase } from "../../lib/supabase";
 import PassiveBaselineRecorder from "./PassiveBaselineRecorder";
-import StrainRecorder from "./StrainRecorder";
+import StrainRecorder, { type StrainRecording, type StrainResult } from "./StrainRecorder";
 import { placementLabel, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 
 type BaselineChannel = { sample_count: number; median?: number; mad?: number };
@@ -13,10 +13,31 @@ type SavedBaseline = {
   channels?: Record<string, BaselineChannel>;
   placements?: Partial<Record<SensorChannel, MuscleId | null>>;
 };
+type SavedStrain = { id: string; created_at: string; raw_data: StrainResult };
+
+function normalizeStrainResult(raw: unknown): StrainResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (Array.isArray(value.recordings)) return value as unknown as StrainResult;
+  if (typeof value.channel === "string" && Array.isArray(value.readings)) {
+    const oldReadings = value.readings as StrainRecording["readings"];
+    return {
+      recordings: [{
+        channel: value.channel,
+        muscle_id: (typeof value.muscle_id === "string" ? value.muscle_id : "f-pec-r") as StrainRecording["muscle_id"],
+        baseline: typeof value.baseline === "number" ? value.baseline : 0,
+        duration_s: typeof value.duration_s === "number" ? value.duration_s : 0,
+        sample_count: typeof value.sample_count === "number" ? value.sample_count : oldReadings.length,
+        readings: oldReadings,
+      }],
+    };
+  }
+  return null;
+}
 
 const DEFAULT_PLACEMENTS: SensorPlacements = {
   MyoWareSensorL: null,
-  MyoWareSensorR: null,
+  MyLocalWareSensorR: null,
 };
 
 export default function Playback() {
@@ -26,6 +47,10 @@ export default function Playback() {
   const [baselines, setBaselines] = useState<Partial<Record<SensorChannel, BaselineChannel>>>({});
   const [loadingBaselines, setLoadingBaselines] = useState(true);
   const [baselineError, setBaselineError] = useState<string | null>(null);
+  const [strainHistory, setStrainHistory] = useState<SavedStrain[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [selectedStrain, setSelectedStrain] = useState<SavedStrain | null>(null);
   const activeSensors = SENSORS.filter((channel) => placements[channel] !== null);
   const placementHighlights: Partial<Record<MuscleId, string>> = {};
   if (placements.MyoWareSensorL) placementHighlights[placements.MyoWareSensorL] = "#C8202F";
@@ -77,6 +102,39 @@ export default function Playback() {
   useEffect(() => {
     void loadBaselines();
   }, [loadBaselines]);
+
+  const loadStrainHistory = useCallback(async () => {
+    if (!user || !supabase) {
+      setStrainHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const { data, error } = await supabase
+      .from("emg_recordings")
+      .select("id, raw_data, created_at")
+      .eq("user_id", user.id)
+      .eq("recording_type", 1)
+      .order("created_at", { ascending: false });
+    if (error) {
+      setHistoryError(error.message);
+      setStrainHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+    const recordings: SavedStrain[] = [];
+    for (const row of data ?? []) {
+      const raw = normalizeStrainResult(row.raw_data);
+      if (raw) recordings.push({ id: row.id, created_at: row.created_at, raw_data: raw });
+    }
+    setStrainHistory(recordings);
+    setHistoryLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    void loadStrainHistory();
+  }, [loadStrainHistory]);
 
   const strainBaselines = useMemo(() => {
     const result: Partial<Record<SensorChannel, BaselineChannel>> = {};
@@ -148,7 +206,36 @@ export default function Playback() {
         placements={placements}
         baselines={strainBaselines}
         canStart={Boolean(readyForStrain) && !loadingBaselines && !baselineError}
+        historicalData={selectedStrain?.raw_data ?? null}
+        historicalTimestamp={selectedStrain?.created_at ?? null}
+        onRecordingStart={() => setSelectedStrain(null)}
+        onSaved={() => { void loadStrainHistory(); }}
       />
+
+      <section className="bg-surface rounded-2xl p-3.5 my-2">
+        <div className="text-[11px] tracking-wider text-muted uppercase mb-2">Past strain recordings</div>
+        {historyLoading && <p className="text-xs text-muted">Loading saved recordings...</p>}
+        {historyError && <p role="alert" className="text-xs text-max">Could not load recording history: {historyError}</p>}
+        {!historyLoading && !historyError && strainHistory.length === 0 && (
+          <p className="text-xs text-muted">No saved strain recordings yet.</p>
+        )}
+        <div className="flex flex-col gap-2">
+          {strainHistory.map((recording) => (
+            <button
+              key={recording.id}
+              type="button"
+              onClick={() => setSelectedStrain(recording)}
+              aria-pressed={selectedStrain?.id === recording.id}
+              className={`rounded-xl border p-3 text-left ${selectedStrain?.id === recording.id ? "border-accent bg-deep" : "border-line"}`}
+            >
+              <span className="block text-sm text-ink">{new Date(recording.created_at).toLocaleString()}</span>
+              <span className="block text-xs text-muted mt-1">
+                {recording.raw_data.recordings.map((item) => placementLabel(item.muscle_id)).join(" + ")} · {recording.raw_data.recordings.reduce((sum, item) => sum + item.sample_count, 0)} readings
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

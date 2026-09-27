@@ -2,8 +2,14 @@ create table if not exists public.emg_recordings (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   recording_type integer not null check (recording_type in (0, 1)),
-  raw_data jsonb not null
+  raw_data jsonb not null,
+  created_at timestamptz not null default now()
 );
+
+alter table public.emg_recordings
+  add column if not exists created_at timestamptz not null default now();
+
+comment on column public.emg_recordings.created_at is 'When the EMG recording was saved';
 
 comment on column public.emg_recordings.recording_type is '0 = passive baseline, 1 = strain recording';
 
