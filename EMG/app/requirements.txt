@@ -10,6 +10,8 @@ aiohttp==3.14.3
     # via wfdb
 aiosignal==1.4.0
     # via aiohttp
+annotated-types==0.8.0
+    # via pydantic
 attrs==26.1.0
     # via aiohttp
 audioread==3.1.0
@@ -18,6 +20,8 @@ bleak==3.0.2
     # via
     #   -r requirements.in
     #   libemg
+blinker==1.9.0
+    # via flask
 certifi==2026.7.22
     # via requests
 cffi==2.1.1
@@ -26,6 +30,8 @@ cffi==2.1.1
     #   soundfile
 charset-normalizer==3.5.1
     # via requests
+click==8.5.0
+    # via flask
 cloudpickle==3.1.2
     # via joblib
 clr-loader==0.3.1
@@ -42,13 +48,14 @@ dearpygui==2.3.1
     # via libemg
 decorator==5.3.1
     # via librosa
+flask==3.1.3
+    # via -r requirements.in
 fonttools==4.66.0
     # via matplotlib
 frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-flask
 fsspec==2026.9.0
     # via wfdb
 h5py==3.16.0
@@ -57,6 +64,10 @@ idna==3.20
     # via
     #   requests
     #   yarl
+itsdangerous==2.2.0
+    # via flask
+jinja2==3.1.6
+    # via flask
 joblib==1.6.0
     # via
     #   librosa
@@ -71,6 +82,10 @@ librosa==0.11.0
     # via libemg
 llvmlite==0.49.0
     # via numba
+markupsafe==3.0.3
+    # via
+    #   jinja2
+    #   werkzeug
 matplotlib==3.11.2
     # via
     #   libemg
@@ -130,6 +145,10 @@ propcache==0.5.4
     #   yarl
 pycparser==3.0
     # via cffi
+pydantic==2.13.5
+    # via realtime
+pydantic-core==2.46.5
+    # via pydantic
 pygame==2.6.1
     # via libemg
 pyparsing==3.3.3
@@ -145,6 +164,8 @@ pythonnet==3.1.0
 pywavelets==1.10.0
     # via libemg
 pyyaml==6.0.3
+    # via -r requirements.in
+realtime==2.31.0
     # via -r requirements.in
 requests==2.34.2
     # via
@@ -185,12 +206,20 @@ typing-extensions==4.16.0
     #   librosa
     #   soundfile
     #   winrt-runtime
+    #   pydantic
+    #   realtime
+typing-inspection==0.4.4
+    # via pydantic
 tzdata==2026.4
     # via pandas
 urllib3==2.8.0
     # via requests
-websockets==17.1
-    # via libemg
+websockets==15.0.1
+    # via
+    #   libemg
+    #   realtime
+werkzeug==3.1.8
+    # via flask
 wfdb==4.3.1
     # via libemg
 winrt-runtime==3.2.1
