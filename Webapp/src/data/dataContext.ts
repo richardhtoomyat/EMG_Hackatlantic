@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import * as mock from "./mockData";
+import { mergeExercises } from "../lib/muscleMap";
 import type { AppData } from "./types";
 
 export const MOCK_DATA: AppData = {
@@ -8,6 +9,8 @@ export const MOCK_DATA: AppData = {
   READINESS: mock.READINESS,
   WEEK_SUMMARY: mock.WEEK_SUMMARY,
   WEEKLY_READINESS_TREND_PCT: mock.WEEKLY_READINESS_TREND_PCT,
+  // Demo mode only (no Supabase): the original illustrative "today".
+  TODAY_MUSCLES: { map: mergeExercises(["Bicep Curl", "Squat", "Shoulder Press"]), activations: [] },
   TODAY_METRICS: mock.TODAY_METRICS,
   CURRENT_SESSION: mock.CURRENT_SESSION,
   LIVE_SET: mock.LIVE_SET,

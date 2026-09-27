@@ -12,7 +12,7 @@
 import { ALL_MUSCLE_IDS } from "./mockData";
 import { ageFromBirthDate } from "../lib/bodyMetrics";
 import { getViewedAthlete } from "./coachSharing";
-import { buildMapFromPercentages } from "../lib/muscleMap";
+import { buildMapFromPercentages, muscleMapForExercise } from "../lib/muscleMap";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import type {
@@ -180,6 +180,10 @@ export function emptyAppData(fallback: AppData, user: User): AppData {
     CURRENT_SESSION: null,
     SESSION_HISTORY: [],
     WEEKLY_TRENDS: { avgImbalancePct: 0, bestSessionScore: 0, sessionsCompleted: 0 },
+    // Nothing is made up for a real account: these stay empty until there are workouts.
+    READINESS: null,
+    WEEKLY_READINESS_TREND_PCT: null,
+    TODAY_MUSCLES: null,
   };
 }
 
@@ -316,8 +320,63 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
   };
 
   data.CURRENT_SESSION = full[0];
+  data.READINESS = readiness(full);
+  data.WEEKLY_READINESS_TREND_PCT = weekOverWeek(full);
+  data.TODAY_MUSCLES = todayMuscles(todays);
 
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Today screen KPIs, from the athlete's own workouts (newest first).
+
+const READINESS_WINDOW_DAYS = 14;
+const READINESS_SESSIONS = 3;
+
+/**
+ * Readiness = average activation score of the last (up to) 3 workouts from
+ * the past 14 days. null ("No score yet") when there is none.
+ */
+function readiness(sessions: Session[]): AppData["READINESS"] {
+  const since = isoDay(new Date(Date.now() - (READINESS_WINDOW_DAYS - 1) * DAY_MS));
+  const recent = sessions.filter((s) => s.date >= since).slice(0, READINESS_SESSIONS);
+  if (recent.length === 0) return null;
+  const score = avg(recent.map((s) => s.activationScore));
+  const basis = `Based on your last ${recent.length === 1 ? "workout" : `${recent.length} workouts`}`;
+  if (score >= 80) return { score, label: "Ready to push", description: `Ready to push · ${basis}` };
+  if (score >= 60) return { score, label: "Good to go", description: `Good to go · ${basis}` };
+  return { score, label: "Building up", description: `Building up — keep going · ${basis}` };
+}
+
+/** Average session score of the last 7 days vs the 7 days before, in % (null if either week is empty). */
+function weekOverWeek(sessions: Session[]): number | null {
+  const d = (n: number) => isoDay(new Date(Date.now() - n * DAY_MS));
+  const thisWeek = sessions.filter((s) => s.date >= d(6)).map((s) => s.activationScore);
+  const lastWeek = sessions.filter((s) => s.date >= d(13) && s.date < d(6)).map((s) => s.activationScore);
+  if (!thisWeek.length || !lastWeek.length) return null;
+  const before = lastWeek.reduce((a, b) => a + b, 0) / lastWeek.length;
+  const now = thisWeek.reduce((a, b) => a + b, 0) / thisWeek.length;
+  return before > 0 ? Math.round(((now - before) / before) * 100) : null;
+}
+
+/** Muscles trained today: each workout's recorded map (else its exercise), primary wins; activation averaged. */
+function todayMuscles(todays: Session[]): AppData["TODAY_MUSCLES"] {
+  if (todays.length === 0) return null;
+  const map: MuscleMap = {};
+  ALL_MUSCLE_IDS.forEach((id) => (map[id] = "untargeted"));
+  for (const s of todays) {
+    const m = s.muscleMap ?? muscleMapForExercise(s.exerciseName);
+    for (const id of ALL_MUSCLE_IDS) {
+      if (m[id] === "primary") map[id] = "primary";
+      else if (m[id] === "secondary" && map[id] !== "primary") map[id] = "secondary";
+    }
+  }
+  const sums: Record<string, number[]> = {};
+  for (const s of todays) for (const a of s.muscleActivations) (sums[a.muscle] ??= []).push(a.pct);
+  const activations = Object.entries(sums)
+    .map(([muscle, ps]) => ({ muscle, pct: avg(ps) }))
+    .sort((a, b) => b.pct - a.pct);
+  return { map, activations };
 }
 
 function historyItem(s: Session): SessionHistoryItem {

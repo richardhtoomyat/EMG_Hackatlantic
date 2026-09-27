@@ -161,13 +161,23 @@ export interface WeeklyTrends {
   sessionsCompleted: number;
 }
 
+/** Today's trained muscles: body-map states plus average activation per muscle label ("Left Bicep": 64). */
+export interface TodayMuscles {
+  map: MuscleMap;
+  activations: MuscleActivation[];
+}
+
 /** Everything the pages read, bundled — provided by data/DataProvider.tsx. */
 export interface AppData {
   ATHLETE: AthleteProfile;
   COACH_LINK: CoachLink | null;
-  READINESS: ReadinessSnapshot;
+  /** null until there is a recent workout to base it on ("No score yet"). */
+  READINESS: ReadinessSnapshot | null;
   WEEK_SUMMARY: DaySummary[];
-  WEEKLY_READINESS_TREND_PCT: number;
+  /** This week's average session score vs the week before, in %; null when either week has no workouts. */
+  WEEKLY_READINESS_TREND_PCT: number | null;
+  /** Muscles trained today (merged over today's workouts); null when nothing was recorded today. */
+  TODAY_MUSCLES: TodayMuscles | null;
   TODAY_METRICS: TodayMetrics;
   CURRENT_SESSION: Session | null;
   LIVE_SET: LiveSet;
