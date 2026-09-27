@@ -4,6 +4,11 @@
 #
 #    pip-compile --no-index
 #
+# Generated on Windows. The winrt-* packages (bleak's Windows Bluetooth
+# backend) are marked `sys_platform == "win32"` so this file also installs on
+# macOS/Linux, where pip adds bleak's own platform backend (e.g. pyobjc on
+# macOS). Requires Python 3.12. Re-add the markers after re-running pip-compile.
+#
 aiohappyeyeballs==2.7.1
     # via aiohttp
 aiohttp==3.14.3
@@ -222,7 +227,7 @@ werkzeug==3.1.8
     # via flask
 wfdb==4.3.1
     # via libemg
-winrt-runtime==3.2.1
+winrt-runtime==3.2.1 ; sys_platform == "win32"
     # via
     #   bleak
     #   winrt-windows-devices-bluetooth
@@ -233,21 +238,21 @@ winrt-runtime==3.2.1
     #   winrt-windows-foundation
     #   winrt-windows-foundation-collections
     #   winrt-windows-storage-streams
-winrt-windows-devices-bluetooth==3.2.1
+winrt-windows-devices-bluetooth==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-devices-bluetooth-advertisement==3.2.1
+winrt-windows-devices-bluetooth-advertisement==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-devices-bluetooth-genericattributeprofile==3.2.1
+winrt-windows-devices-bluetooth-genericattributeprofile==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-devices-enumeration==3.2.1
+winrt-windows-devices-enumeration==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-devices-radios==3.2.1
+winrt-windows-devices-radios==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-foundation==3.2.1
+winrt-windows-foundation==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-foundation-collections==3.2.1
+winrt-windows-foundation-collections==3.2.1 ; sys_platform == "win32"
     # via bleak
-winrt-windows-storage-streams==3.2.1
+winrt-windows-storage-streams==3.2.1 ; sys_platform == "win32"
     # via bleak
 yarl==1.25.1
     # via aiohttp
