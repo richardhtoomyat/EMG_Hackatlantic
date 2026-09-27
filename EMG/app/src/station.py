@@ -24,8 +24,8 @@ How it works (plain HTTPS to the Vercel API, nothing else):
      is discarded.
 
 Terminal while running: a connect code (nobody connected) · any other text
-(someone connected: shown live on their phone's Test tab) · `end` (disconnect
-the user) · `quit`.
+(someone connected: shown live on their phone's Test tab) · `/age <n>` (test
+write: the connected user's profiles.age) · `end` (disconnect the user) · `quit`.
 """
 
 from __future__ import annotations
@@ -325,6 +325,19 @@ class Station:
             log(f"Message not sent: {exc}")
             return True
 
+    def set_age(self, arg: str) -> None:
+        """`/age 25`: test write — the connected user's profiles.age, via Vercel."""
+        try:
+            age = int(arg)
+        except ValueError:
+            log("Usage: /age <number>, e.g. /age 25")
+            return
+        try:
+            r = self.api.call("POST", "profile", {"age": age})
+            log(f"Saved to Supabase: {r['user_name']}'s age {r['before']} → {r['after']}")
+        except ApiError as exc:
+            log(f"Age not saved: {exc}")
+
     def release(self) -> None:
         try:
             reply = self.api.call("POST", "release", {})
@@ -478,7 +491,7 @@ def main() -> None:
           f"  Sign in on your phone → Workout → Connect to station, then "
           f"{'show the QR code to the camera or ' if scanner else ''}type the code here.\n"
           "  Type: <code> to connect · any text = message to the connected phone (Test tab) · "
-          "end (disconnect user) · quit\n", flush=True)
+          "/age <n> (test: save the connected user's age) · end (disconnect user) · quit\n", flush=True)
 
     lines: "queue.Queue[str]" = queue.Queue()
     threading.Thread(target=stdin_forever, args=(lines,), daemon=True, name="stdin").start()
@@ -500,6 +513,11 @@ def main() -> None:
                         station.release()
                     else:
                         log("Nobody is connected.")
+                elif word.startswith("/age"):
+                    if station.connected:
+                        station.set_age(line[4:].strip())
+                    else:
+                        log("Nobody is connected — connect first, then /age <number>.")
                 elif not station.connected or not station.send_message(line):
                     station.claim(line)
             if scanner is not None:
