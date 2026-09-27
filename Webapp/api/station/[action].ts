@@ -11,7 +11,7 @@
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
  *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
  *   POST /api/station/profile    {age | weight_kg}  → test write: one profile column of the connected user
- *   POST /api/station/recording  {type, raw_data}   → baseline (0) / strain or workout curves (1) → emg_recordings
+ *   POST /api/station/recording  {type, raw_data}   → baseline or calibration (0) / strain or workout curves (1) → emg_recordings
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -241,7 +241,11 @@ async function saveRecording(station: StationRow, body: { type?: unknown; raw_da
   const data = body.raw_data;
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new HttpError(400, "raw_data must be an object");
   const d = data as Record<string, unknown>;
-  if (type === 0 && (typeof d.channels !== "object" || typeof d.placements !== "object")) {
+  const calibration = type === 0 && d.kind === "calibration";
+  if (calibration && (typeof d.sides !== "object" || !d.sides || typeof d.ok !== "boolean")) {
+    throw new HttpError(400, "A calibration needs sides and ok");
+  }
+  if (type === 0 && !calibration && (typeof d.channels !== "object" || typeof d.placements !== "object")) {
     throw new HttpError(400, "A baseline needs channels and placements");
   }
   const curves = type === 1 && d.kind === "workout_curves";

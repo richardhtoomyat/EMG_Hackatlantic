@@ -1,10 +1,24 @@
 import QRCode from "qrcode";
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/authContext";
 import { useRefreshData } from "../data/dataContext";
 import { EXERCISES } from "../data/mockData";
 import { loadSession, type SessionDetail } from "../data/supabaseData";
 import { sideLabels } from "../data/testSession";
+import {
+  cancelCalibration,
+  finishCalibration,
+  getCalibration,
+  markSqueeze,
+  needsCalibration,
+  RELAX_S,
+  saveCalibration,
+  SQUEEZE_S,
+  startCalibration,
+  type Calibration,
+  type CalibrationResult,
+} from "../lib/calibration";
 import { muscleMapForExercise } from "../lib/muscleMap";
 import type { LiveMetrics, Sample, StationInfo } from "../lib/stationApi";
 import { supabase } from "../lib/supabase";
@@ -26,7 +40,10 @@ const RIGHT = RIGHT_COLOR;
 export default function StationRecorder() {
   const refresh = useRefreshData();
   const st = useStation(refresh);
+  const { user } = useAuth();
   const [exerciseName, setExerciseName] = useState(Object.keys(EXERCISES)[0]);
+  const [, setCalTick] = useState(0); // re-read the stored calibration after calibrating
+  const calibration = user ? getCalibration(user.id, exerciseName) : null;
 
   if (st.station === undefined) return <Notice text="Checking for a connected station…" />;
   if (st.station === null) return <ConnectCard onConnected={() => void st.refreshStation()} error={st.error} />;
@@ -53,7 +70,10 @@ export default function StationRecorder() {
           onExercise={setExerciseName}
           station={station}
           metrics={st.metrics}
-          onStart={() => void st.start(exerciseName)}
+          userId={user?.id ?? null}
+          calibration={calibration}
+          onCalibrated={() => setCalTick((n) => n + 1)}
+          onStart={() => void st.start(exerciseName, needsCalibration(exerciseName) ? calibration : null)}
         />
       )}
 
@@ -86,14 +106,20 @@ export default function StationRecorder() {
 }
 
 // ---------------------------------------------------------------------------
-function ReadyView({ exercise, onExercise, station, metrics, onStart }: {
+function ReadyView({ exercise, onExercise, station, metrics, userId, calibration, onCalibrated, onStart }: {
   exercise: string;
   onExercise: (name: string) => void;
   station: StationInfo;
   metrics: LiveMetrics | null;
+  userId: string | null;
+  calibration: Calibration | null;
+  onCalibrated: () => void;
   onStart: () => void;
 }) {
   const labels = sideLabels(exercise);
+  const [recalibrating, setRecalibrating] = useState(false);
+  useEffect(() => setRecalibrating(false), [exercise]);
+  const mustCalibrate = needsCalibration(exercise) && !!userId && (!calibration || recalibrating);
   const both = station.sensors.left && station.sensors.right;
   const sensorNote = !station.online
     ? "The station is offline — is station.py running on it?"
@@ -144,10 +170,170 @@ function ReadyView({ exercise, onExercise, station, metrics, onStart }: {
         <div className="text-xs text-muted mt-2">{sensorNote}</div>
       </div>
 
-      <button onClick={onStart} disabled={!station.online}
-        className="h-14 rounded-full bg-accent text-bg text-[17px] font-semibold disabled:opacity-50">
-        Start workout
-      </button>
+      {mustCalibrate ? (
+        <CalibrationCard
+          key={exercise}
+          exercise={exercise}
+          userId={userId!}
+          online={station.online}
+          metrics={metrics}
+          canCancel={recalibrating}
+          onCancel={() => setRecalibrating(false)}
+          onDone={() => {
+            setRecalibrating(false);
+            onCalibrated();
+          }}
+        />
+      ) : (
+        <>
+          {needsCalibration(exercise) && calibration && (
+            <div className="flex justify-between items-center text-xs text-muted px-1" data-testid="calibrated">
+              <span>✓ Calibrated at {new Date(calibration.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>
+              <button className="text-accent" onClick={() => setRecalibrating(true)}>Recalibrate</button>
+            </div>
+          )}
+          <button onClick={onStart} disabled={!station.online}
+            className="h-14 rounded-full bg-accent text-bg text-[17px] font-semibold disabled:opacity-50">
+            Start workout
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+type CalPhase = "intro" | "relax" | "squeeze" | "saving" | "result";
+
+/** Relax (RELAX_S) → squeeze as hard as possible (SQUEEZE_S) → the station computes rest / max per side. */
+function CalibrationCard({ exercise, userId, online, metrics, canCancel, onCancel, onDone }: {
+  exercise: string;
+  userId: string;
+  online: boolean;
+  metrics: LiveMetrics | null;
+  canCancel: boolean;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  const [phase, setPhase] = useState<CalPhase>("intro");
+  const [stepStart, setStepStart] = useState(0);
+  const [result, setResult] = useState<CalibrationResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const token = useRef<string | null>(null);
+  const timer = useRef(0);
+  const now = useNow(250);
+  const labels = sideLabels(exercise);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const fail = (e: unknown) => {
+    setError(e instanceof Error ? e.message : String(e));
+    setPhase("intro");
+  };
+
+  const run = async () => {
+    setError(null);
+    setResult(null);
+    try {
+      token.current = await startCalibration(userId, exercise);
+      setPhase("relax");
+      setStepStart(Date.now());
+      timer.current = window.setTimeout(async () => {
+        try {
+          await markSqueeze();
+          setPhase("squeeze");
+          setStepStart(Date.now());
+          timer.current = window.setTimeout(async () => {
+            setPhase("saving");
+            try {
+              const r = await finishCalibration(userId, token.current);
+              setResult(r);
+              setPhase("result"); // saved (and the card closed) when "Continue" is tapped
+            } catch (e) {
+              fail(e);
+            }
+          }, SQUEEZE_S * 1000);
+        } catch (e) {
+          fail(e);
+        }
+      }, RELAX_S * 1000);
+    } catch (e) {
+      fail(e);
+    }
+  };
+
+  const stop = () => {
+    window.clearTimeout(timer.current);
+    void cancelCalibration().catch(() => {});
+    setPhase("intro");
+  };
+
+  const left = (phase === "relax" ? RELAX_S : SQUEEZE_S) - Math.floor((now - stepStart) / 1000);
+  return (
+    <div className="bg-surface rounded-2xl p-3.5 border border-accent/40" data-testid="calibration">
+      <div className="text-[11px] tracking-wider text-accent uppercase">Calibrate {exercise}</div>
+      {phase === "intro" && (
+        <>
+          <p className="text-sm text-soft mt-1.5">
+            Once per login, so 100% means <b>your</b> maximum squeeze. Takes {RELAX_S + SQUEEZE_S} seconds:
+          </p>
+          <ol className="text-sm text-muted mt-2 space-y-1 list-decimal list-inside">
+            <li>Relax both arms completely ({RELAX_S} s)</li>
+            <li>Curl and squeeze both {labels.left.replace(/^Left /, "").toLowerCase()}s as hard as you can ({SQUEEZE_S} s)</li>
+          </ol>
+          {error && <div role="alert" className="text-xs text-max mt-2">{error}</div>}
+          <button onClick={() => void run()} disabled={!online}
+            className="w-full h-12 rounded-full bg-accent text-bg font-semibold mt-3 disabled:opacity-50">
+            Start calibration
+          </button>
+          {canCancel && <button onClick={onCancel} className="w-full text-xs text-muted mt-2">Keep the current calibration</button>}
+        </>
+      )}
+      {(phase === "relax" || phase === "squeeze") && (
+        <div className="text-center py-2" data-testid="calibration-step">
+          <div className="text-[13px] text-soft">{phase === "relax" ? "Relax both arms" : "Squeeze as hard as you can!"}</div>
+          <div className={`font-serif text-[56px] leading-none mt-1 tabular-nums ${phase === "squeeze" ? "text-max" : ""}`}>
+            {Math.max(1, left)}
+          </div>
+          <div className="text-xs text-muted mt-1">Step {phase === "relax" ? 1 : 2} of 2</div>
+          <div className="mt-3 text-left">
+            <LevelBar label="Left" value={metrics?.left_pct} color={LEFT} live />
+            <LevelBar label="Right" value={metrics?.right_pct} color={RIGHT} live />
+          </div>
+          <button onClick={stop} className="text-xs text-muted mt-2">Cancel</button>
+        </div>
+      )}
+      {phase === "saving" && <div className="text-sm text-muted py-3" role="status">Calculating your rest and max…</div>}
+      {phase === "result" && result && (
+        <div data-testid="calibration-result">
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {(["left", "right"] as const).map((side) => {
+              const r = result.sides[side];
+              return (
+                <div key={side} className="bg-deep rounded-xl p-2.5 text-xs">
+                  <div className="text-soft font-medium">{side === "left" ? labels.left : labels.right} {r?.ok ? "✓" : "✗"}</div>
+                  {r?.mvc != null ? (
+                    <div className="text-muted mt-0.5">rest {Math.round(r.rest ?? 0)} · max {Math.round(r.mvc)}</div>
+                  ) : null}
+                  {!r?.ok && <div className="text-max mt-0.5">{r?.problem ?? "no data"}</div>}
+                </div>
+              );
+            })}
+          </div>
+          {result.ok ? (
+            <button
+              onClick={() => {
+                saveCalibration(userId, result);
+                onDone();
+              }}
+              className="w-full h-12 rounded-full bg-accent text-bg font-semibold mt-3"
+            >
+              Continue
+            </button>
+          ) : (
+            <button onClick={() => void run()} className="w-full h-12 rounded-full border border-line mt-3">Try again</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

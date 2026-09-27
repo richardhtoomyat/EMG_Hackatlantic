@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { initialAuthError, supabase } from "../lib/supabase";
 import { AuthContext, type SignUpInput } from "./authContext";
 import { releaseStation } from "../lib/stationApi";
+import { clearCalibrations } from "../lib/calibration";
 
 /**
  * Supabase email/password auth. The session is persisted in localStorage by
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return;
     // Free the sensor station first (needs the token); an unfinished workout is discarded.
     await releaseStation().catch(() => {});
+    clearCalibrations(); // every exercise is calibrated again after the next sign-in
     const { error } = await supabase.auth.signOut();
     // Clear local state even if the server call failed (e.g. offline).
     if (error) console.error("[activateMyo] sign-out error:", error);

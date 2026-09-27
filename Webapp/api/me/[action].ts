@@ -125,7 +125,7 @@ async function myStation(user: AuthUser) {
 }
 
 /** Kiril's baseline / strain recordings, run on the station (see labCommand). */
-const LAB_MODES = ["baseline", "strain"] as const;
+const LAB_MODES = ["baseline", "strain", "calibration"] as const;
 
 async function command(user: AuthUser, body: Record<string, unknown>) {
   const s = await requireConnected(user);
@@ -149,6 +149,7 @@ async function command(user: AuthUser, body: Record<string, unknown>) {
     await queueCommand(s.id, "start", {
       session_id: session.id,
       exercise_name: exercise,
+      calibration: parseCalibration(body.calibration),
       left_label: typeof body.left_label === "string" ? body.left_label.slice(0, 40) : "Left",
       right_label: typeof body.right_label === "string" ? body.right_label.slice(0, 40) : "Right",
     });
@@ -186,7 +187,9 @@ async function labCommand(s: StationRow, body: Record<string, unknown>) {
     if (!isOnline(s)) throw new HttpError(409, "The station is offline — is the station program running?");
     if (s.recording_session_id) throw new HttpError(409, "A workout is being recorded on this station");
     let payload: Record<string, unknown>;
-    if (mode === "baseline") {
+    if (mode === "calibration") {
+      payload = { mode, exercise: str(body.exercise ?? "Workout", "exercise", 60) };
+    } else if (mode === "baseline") {
       const raw = body.placements;
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "placements must be an object");
       const entries = Object.entries(raw as Record<string, unknown>);
@@ -215,11 +218,31 @@ async function labCommand(s: StationRow, body: Record<string, unknown>) {
     await queueCommand(s.id, "start", payload);
     return json({ ok: true });
   }
+  if (type === "next_set" && mode === "calibration") {
+    // Calibration: relax is done, squeeze now.
+    await queueCommand(s.id, "next_set", { mode });
+    return json({ ok: true });
+  }
   if (type === "finish" || type === "cancel") {
     await queueCommand(s.id, type, { mode });
     return json({ ok: true });
   }
   throw new HttpError(400, "type must be start, finish or cancel");
+}
+
+/** {left: {rest, mvc}, right: {rest, mvc}} from the phone's calibration, or null. */
+function parseCalibration(v: unknown): Record<string, { rest: number; mvc: number }> | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const out: Record<string, { rest: number; mvc: number }> = {};
+  for (const side of ["left", "right"]) {
+    const x = (v as Record<string, unknown>)[side] as Record<string, unknown> | undefined;
+    if (!x) continue;
+    const rest = num(x.rest, `${side}.rest`, -1e6, 1e6);
+    const mvc = num(x.mvc, `${side}.mvc`, -1e6, 1e6);
+    if (mvc <= rest) throw new HttpError(400, `Calibration max must be above rest (${side})`);
+    out[side] = { rest, mvc };
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function liveData(user: AuthUser, since: number) {

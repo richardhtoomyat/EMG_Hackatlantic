@@ -44,7 +44,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
-from lab import LabRecording
+from lab import LabRecording, summarize_calibration
 from recorder import PairNormalizer, RepThresholds, SessionRecorder
 from sources import LibEMGSource, SampleSource, SimulatedSource
 
@@ -148,6 +148,9 @@ class Station:
         self.changed_at = 0.0  # last local connect/disconnect/start; older replies are stale
         # Per-set L/R activation curve of the current workout: {set number: [[t s, left %, right %], ...]}.
         self.traces: dict[int, list] = {}
+        # Calibration in progress (relax → squeeze), and the fixed rest/max mapping of the current workout.
+        self.calib: Optional[dict] = None
+        self.session_norm: Optional[PairNormalizer] = None
         # Baseline / strain recording (Test tab), labelled with config.yml's sensor names.
         self.lab: Optional[LabRecording] = None
         self.sensor_names = list(sensor_names or ["MyoWareSensorL", "MyoWareSensorR"])[:2]
@@ -184,11 +187,15 @@ class Station:
                 if self.lab is not None:
                     log(f"{self.lab.mode.capitalize()} recording discarded (user disconnected).")
                     self.lab = None
+                self.calib = None
 
     # ------------------------------------------------------------- commands
     def handle(self, cmd: dict) -> None:
         kind, sid = cmd.get("type"), cmd.get("session_id")
         now = time.monotonic()
+        if cmd.get("mode") == "calibration":
+            self.handle_calibration(kind, cmd, now)
+            return
         if cmd.get("mode") in ("baseline", "strain"):
             self.handle_lab(kind, cmd, now)
             return
@@ -197,7 +204,11 @@ class Station:
                 if self.session is not None and self.session.session_id == sid:
                     return
                 self.lab = None
+                self.calib = None
                 self.traces = {}
+                cal = cmd.get("calibration") if isinstance(cmd.get("calibration"), dict) else None
+                # With a calibration, % = (signal − rest) / (max − rest) per side for this workout.
+                self.session_norm = PairNormalizer([cal.get("left") or {}, cal.get("right") or {}]) if cal else None
                 self.session = SessionRecorder(
                     session_id=str(sid),
                     exercise_name=str(cmd.get("exercise_name") or "Workout"),
@@ -207,7 +218,8 @@ class Station:
                     thresholds=self.thresholds,
                 )
                 self.changed_at = now
-            log(f"Recording {self.session.exercise_name} — set 1")
+            log(f"Recording {self.session.exercise_name} — set 1"
+                + (" (calibrated)" if self.session_norm is not None else ""))
         elif kind == "next_set":
             with self.lock:
                 s = self.session
@@ -238,6 +250,39 @@ class Station:
                     why = {"user": "cancelled on the phone", "disconnect": "discarded — the user disconnected",
                            "timeout": "discarded — 10 minutes without activity"}.get(str(cmd.get("reason")), "discarded")
                     log(f"Recording {why}.")
+
+    def handle_calibration(self, kind: Optional[str], cmd: dict, now: float) -> None:
+        """Workout calibration: start = relax, next_set = now squeeze, finish = compute + save."""
+        if kind == "start":
+            with self.lock:
+                if self.session is not None:
+                    self.notify("Can't calibrate while a workout is being recorded.")
+                    return
+                self.lab = None
+                self.calib = {"exercise": str(cmd.get("exercise") or "Workout"), "started": now, "mark": None, "rows": []}
+            log(f"Calibrating {self.calib['exercise']}: relax…")
+        elif kind == "next_set":
+            with self.lock:
+                if self.calib is not None and self.calib["mark"] is None:
+                    self.calib["mark"] = now
+            log("Calibrating: squeeze as hard as you can…")
+        elif kind == "finish":
+            with self.lock:
+                c, self.calib = self.calib, None
+            if c is None:
+                return
+            mark = c["mark"] if c["mark"] is not None else now
+            result = summarize_calibration(c["rows"], c["started"], mark, now, self.sensor_names, self.missing_value)
+            raw = {"kind": "calibration", "exercise": c["exercise"], **result}
+            sides = ", ".join(f"{k} rest {v['rest']:.0f} max {v['mvc']:.0f}" if "mvc" in v else f"{k}: {v['problem']}"
+                              for k, v in result["sides"].items())
+            if self.post_retry("recording", {"type": 0, "raw_data": raw}):
+                log(f"Calibration {'OK' if result['ok'] else 'failed'} — {sides}")
+            else:
+                self.notify("Calibration could not be saved — see the station terminal.")
+        elif kind == "cancel":
+            with self.lock:
+                self.calib = None
 
     def save_traces(self, session_id: str, exercise: str, sets: list, traces: dict) -> None:
         """Each saved set's L/R activation curve → emg_recordings, for the Session page graphs.
@@ -343,7 +388,9 @@ class Station:
     def sample_forever(self) -> None:
         while not self.stop.is_set():
             for t, left_raw, right_raw in self.source.read():
-                left, right = self.norm.update(left_raw, right_raw)
+                # A calibrated workout uses its own rest/max mapping; otherwise the adaptive scale.
+                norm = self.session_norm if self.session is not None and self.session_norm is not None else self.norm
+                left, right = norm.update(left_raw, right_raw)
                 if left is not None:
                     self.last_seen[0] = t
                 if right is not None:
@@ -360,6 +407,8 @@ class Station:
                                            None if right is None else round(right)])
                     if self.lab is not None:
                         self.lab.add(left_raw, right_raw)
+                    if self.calib is not None and len(self.calib["rows"]) < 4000:
+                        self.calib["rows"].append((t, left_raw, right_raw))
                     if self.connected:
                         self.batch.append([round((t - self.t0) * 1000),
                                            None if left_raw is None else round(left_raw, 1),

@@ -109,6 +109,19 @@ sensors and the live signal) — a quick way to check the whole link. Those
 lines are kept ~10 minutes in Redis and wiped when the user disconnects.
 Codes are single-use and expire after 2 minutes.
 
+**Calibration (Workout tab, Bicep Curl for now).** The first Bicep Curl
+workout after signing in asks for a 10 s calibration: relax both arms (5 s),
+then curl and squeeze as hard as possible (5 s). The station ignores the first
+second of each step and stores, per side, the resting level (median + MAD) and
+the maximum (95th percentile of the squeeze) — `src/lab.py`
+`summarize_calibration`; it passes if max ≥ rest + max(30, 5·MAD). During a
+calibrated workout each side's % = (signal − rest) / (max − rest) × 100 (% of
+maximum) instead of the adaptive scale. The phone remembers the calibration per
+exercise until logout (so returning to Bicep Curl skips it; logging out clears
+it), and it is saved to `emg_recordings` (type 0, `kind: "calibration"`).
+Exercises listed in `Webapp/src/lib/calibration.ts` `CALIBRATED_EXERCISES`
+require it.
+
 **Baseline & strain on the Test tab.** Kiril's baseline / strain recording
 (originally `run.py` on `localhost:5000`, now removed) runs through the station: on the
 phone's **Test** tab, pick each sensor's muscle, press *Start recording

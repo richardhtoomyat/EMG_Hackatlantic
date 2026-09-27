@@ -97,3 +97,53 @@ class LabRecording:
         if self.mode == "baseline":
             return 0, {**summarize_baseline(self.rows, names, duration, missing), "placements": self.placements}
         return 1, summarize_strain(self.rows, names, duration, self.selections, missing)
+
+
+# ---------------------------------------------------------------------------
+# Calibration (Workout tab, e.g. Bicep Curl): relax, then squeeze as hard as possible.
+
+CALIB_SKIP_S = 1.0  # ignore the first second of each step (reaction time)
+CALIB_MIN_SAMPLES = 10
+CALIB_MIN_SPAN = 30.0  # raw units: max must clear rest by at least this much...
+CALIB_MIN_SPAN_MADS = 5.0  # ...and by this many rest MADs
+
+
+def _percentile(values: list[float], q: float) -> float:
+    s = sorted(values)
+    k = (len(s) - 1) * q
+    lo, hi = int(k), min(int(k) + 1, len(s) - 1)
+    return s[lo] + (s[hi] - s[lo]) * (k - lo)
+
+
+def summarize_calibration(rows: Sequence[tuple[float, Optional[float], Optional[float]]], started: float,
+                          mark: float, ended: float, names: Sequence[str], missing: float = -1.0) -> dict:
+    """Rows are (time, left raw, right raw). Rest = started..mark, squeeze = mark..ended.
+
+    Per side: rest = median and mad of the relaxed signal, mvc = 95th percentile
+    of the squeeze (robust to a single spike). ok when the squeeze clears rest by
+    max(CALIB_MIN_SPAN, CALIB_MIN_SPAN_MADS · mad).
+    """
+    sides: dict[str, dict] = {}
+    for i, side in enumerate(("left", "right")):
+        rest = [r[i + 1] for r in rows if started + CALIB_SKIP_S <= r[0] < mark and _valid(r[i + 1], missing)]
+        squeeze = [r[i + 1] for r in rows if mark + CALIB_SKIP_S <= r[0] <= ended and _valid(r[i + 1], missing)]
+        name = names[i] if i < len(names) else side
+        if len(rest) < CALIB_MIN_SAMPLES or len(squeeze) < CALIB_MIN_SAMPLES:
+            sides[side] = {"sensor": name, "ok": False, "problem": "no signal from this sensor"}
+            continue
+        r_med = float(median(rest))
+        mad = float(median(abs(v - r_med) for v in rest))
+        mvc = float(_percentile(squeeze, 0.95))
+        need = max(CALIB_MIN_SPAN, CALIB_MIN_SPAN_MADS * mad)
+        ok = mvc - r_med >= need
+        sides[side] = {
+            "sensor": name, "ok": ok, "rest": round(r_med, 2), "mad": round(mad, 2), "mvc": round(mvc, 2),
+            "rest_samples": len(rest), "squeeze_samples": len(squeeze),
+            **({} if ok else {"problem": "the squeeze was barely above rest — squeeze harder or check the sensor"}),
+        }
+    return {
+        "rest_s": round(max(0.0, mark - started), 1),
+        "squeeze_s": round(max(0.0, ended - mark), 1),
+        "sides": sides,
+        "ok": all(s["ok"] for s in sides.values()),
+    }

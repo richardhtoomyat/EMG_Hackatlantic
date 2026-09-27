@@ -103,3 +103,33 @@ def test_lab_recording_result_shapes():
         strain.add(*r)
     rec_type, raw = strain.result(4.0, NAMES, MISSING)
     assert rec_type == 1 and len(raw["recordings"]) == 1 and raw["recordings"][0]["channel"] == "MyoWareSensorR"
+
+
+def _calib_rows(right_squeeze=600.0, right_missing=False, seed=3):
+    rng = random.Random(seed)
+    out = []
+    for i in range(200):  # 20 Hz: 0-5 s relax, 5-10 s squeeze
+        t = i / 20
+        squeeze = t >= 5.0
+        left = 90 + rng.gauss(0, 4) + (520 if squeeze and t >= 5.3 else 0)
+        right = None if right_missing else 100 + rng.gauss(0, 4) + ((right_squeeze - 100) if squeeze and t >= 5.3 else 0)
+        out.append((t, left, right))
+    return out
+
+
+def test_calibration_rest_and_max():
+    from lab import summarize_calibration
+    r = summarize_calibration(_calib_rows(), 0.0, 5.0, 10.0, NAMES)
+    assert r["ok"] and r["rest_s"] == 5.0 and r["squeeze_s"] == 5.0
+    left, right = r["sides"]["left"], r["sides"]["right"]
+    assert left["sensor"] == "MyoWareSensorL" and abs(left["rest"] - 90) < 3 and abs(left["mvc"] - 610) < 15
+    assert abs(right["rest"] - 100) < 3 and abs(right["mvc"] - 600) < 15
+    assert left["rest_samples"] == 80 and left["squeeze_samples"] == 80  # first second of each step skipped
+
+
+def test_calibration_flags_weak_squeeze_and_missing_sensor():
+    from lab import summarize_calibration
+    weak = summarize_calibration(_calib_rows(right_squeeze=110.0), 0.0, 5.0, 10.0, NAMES)
+    assert not weak["ok"] and weak["sides"]["left"]["ok"] and not weak["sides"]["right"]["ok"]
+    gone = summarize_calibration(_calib_rows(right_missing=True), 0.0, 5.0, 10.0, NAMES)
+    assert not gone["ok"] and gone["sides"]["right"]["problem"] == "no signal from this sensor"

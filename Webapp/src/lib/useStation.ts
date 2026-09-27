@@ -161,7 +161,7 @@ export function useStation(onSaved: () => Promise<void> | void) {
     }
   }, []);
 
-  const start = (exerciseName: string) =>
+  const start = (exerciseName: string, calibration?: { left?: { rest: number; mvc: number }; right?: { rest: number; mvc: number } } | null) =>
     run(async () => {
       setPhase("starting");
       setExercise(exerciseName);
@@ -175,6 +175,7 @@ export function useStation(onSaved: () => Promise<void> | void) {
             left_label: labels.left,
             right_label: labels.right,
             muscle_map: muscleMapForExercise(exerciseName),
+            ...(calibration ? { calibration: { left: calibration.left, right: calibration.right } } : {}),
           },
         });
         changedAt.current = Date.now();
