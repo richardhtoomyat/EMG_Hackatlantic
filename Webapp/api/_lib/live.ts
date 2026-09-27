@@ -18,14 +18,26 @@ export interface LiveSnapshot {
   chunks: LiveChunk[];
   seq: number;
 }
+/** A line typed in the station's terminal (Test tab). */
+export interface StationMessage {
+  seq: number;
+  at: number; // ms epoch
+  text: string;
+}
 interface LiveStore {
   push(stationId: string, metrics: Record<string, unknown>, samples: LiveChunk["samples"]): Promise<number>;
   since(stationId: string, since: number): Promise<LiveSnapshot>;
   clear(stationId: string): Promise<void>;
+  pushMessage(stationId: string, text: string): Promise<number>;
+  messages(stationId: string, since: number): Promise<{ messages: StationMessage[]; seq: number }>;
+  clearMessages(stationId: string): Promise<void>;
 }
 
 const TTL_S = 15;
 const MAX_CHUNKS = 60; // ~12 s at 5 batches/s
+const MSG_TTL_S = 600; // terminal messages: 10 minutes, and wiped when the user disconnects
+const MAX_MESSAGES = 100;
+const msgKeys = (id: string) => ({ l: `live:msg:${id}`, s: `live:msgseq:${id}` });
 
 class UpstashStore implements LiveStore {
   private redis: Redis;
@@ -63,6 +75,30 @@ class UpstashStore implements LiveStore {
   async clear(id: string) {
     const k = this.keys(id);
     await this.redis.del(k.m, k.c);
+  }
+  async pushMessage(id: string, text: string) {
+    const k = msgKeys(id);
+    const seq = await this.redis.incr(k.s);
+    const p = this.redis.pipeline();
+    p.expire(k.s, MSG_TTL_S);
+    p.rpush(k.l, JSON.stringify({ seq, at: Date.now(), text }));
+    p.ltrim(k.l, -MAX_MESSAGES, -1);
+    p.expire(k.l, MSG_TTL_S);
+    await p.exec();
+    return seq;
+  }
+  async messages(id: string, since: number) {
+    const k = msgKeys(id);
+    const [list, s] = await Promise.all([
+      this.redis.lrange<string | StationMessage>(k.l, 0, -1),
+      this.redis.get<number | string>(k.s),
+    ]);
+    const msgs = (list ?? []).map((m) => (typeof m === "string" ? (JSON.parse(m) as StationMessage) : m));
+    return { messages: msgs.filter((m) => m.seq > since), seq: Number(s ?? 0) };
+  }
+  async clearMessages(id: string) {
+    const k = msgKeys(id);
+    await this.redis.del(k.l, k.s);
   }
 }
 
@@ -104,6 +140,31 @@ class TcpRedisStore implements LiveStore {
     const k = this.keys(id);
     await r.del([k.m, k.c]);
   }
+  async pushMessage(id: string, text: string) {
+    const r = await this.redis();
+    const k = msgKeys(id);
+    const seq = await r.incr(k.s);
+    await r
+      .multi()
+      .expire(k.s, MSG_TTL_S)
+      .rPush(k.l, JSON.stringify({ seq, at: Date.now(), text }))
+      .lTrim(k.l, -MAX_MESSAGES, -1)
+      .expire(k.l, MSG_TTL_S)
+      .exec();
+    return seq;
+  }
+  async messages(id: string, since: number) {
+    const r = await this.redis();
+    const k = msgKeys(id);
+    const [list, s] = await Promise.all([r.lRange(k.l, 0, -1), r.get(k.s)]);
+    const msgs = list.map((m) => JSON.parse(m) as StationMessage);
+    return { messages: msgs.filter((m) => m.seq > since), seq: Number(s ?? 0) };
+  }
+  async clearMessages(id: string) {
+    const r = await this.redis();
+    const k = msgKeys(id);
+    await r.del([k.l, k.s]);
+  }
 }
 
 /** Local tests only (single process). */
@@ -128,6 +189,24 @@ class MemoryStore implements LiveStore {
     const d = this.get(id);
     d.metrics = null;
     d.chunks = [];
+  }
+  private msgs = new Map<string, { list: StationMessage[]; seq: number }>();
+  private msg(id: string) {
+    if (!this.msgs.has(id)) this.msgs.set(id, { list: [], seq: 0 });
+    return this.msgs.get(id)!;
+  }
+  async pushMessage(id: string, text: string) {
+    const m = this.msg(id);
+    m.seq += 1;
+    m.list = [...m.list, { seq: m.seq, at: Date.now(), text }].slice(-MAX_MESSAGES);
+    return m.seq;
+  }
+  async messages(id: string, since: number) {
+    const m = this.msg(id);
+    return { messages: m.list.filter((x) => x.seq > since), seq: m.seq };
+  }
+  async clearMessages(id: string) {
+    this.msgs.delete(id);
   }
 }
 

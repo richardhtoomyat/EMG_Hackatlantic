@@ -17,6 +17,7 @@ import {
   type LiveSnapshot,
   type Sample,
   type StationInfo,
+  type StationMessage,
 } from "./stationApi";
 
 const STATION_POLL_MS = 3000;
@@ -264,4 +265,38 @@ export function useConnectCode(active: boolean, onConnected: () => void) {
 
   const secondsLeft = code ? Math.max(0, Math.round((Date.parse(code.expires_at) - now) / 1000)) : 0;
   return { code, status, error, secondsLeft, create };
+}
+
+// ---------------------------------------------------------------------------
+const MESSAGE_POLL_MS = 500;
+
+/** Lines typed in the connected station's terminal, newest last. `connectionKey`
+ *  changes on every new connection, which starts an empty log. */
+export function useStationMessages(connectionKey: string | null) {
+  const [messages, setMessages] = useState<StationMessage[]>([]);
+  useEffect(() => {
+    setMessages([]);
+    if (!connectionKey) return;
+    let since = 0;
+    let stopped = false;
+    let timer = 0;
+    const tick = async () => {
+      try {
+        const r = await stationApi<{ messages: StationMessage[]; seq: number }>("messages", { query: { since } });
+        if (stopped) return;
+        if (r.seq < since) since = 0; // the station's log was reset
+        if (r.messages.length) setMessages((prev) => [...prev, ...r.messages].slice(-200));
+        since = Math.max(since, r.seq);
+      } catch {
+        /* disconnected or offline: the station poll handles it */
+      }
+      if (!stopped) timer = window.setTimeout(tick, MESSAGE_POLL_MS);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [connectionKey]);
+  return messages;
 }

@@ -42,6 +42,7 @@ export async function releaseStation(station: StationRow, reason: string): Promi
     "release station"
   ) as StationRow;
   await live().clear(station.id).catch(() => {});
+  await live().clearMessages(station.id).catch(() => {});
   return updated;
 }
 

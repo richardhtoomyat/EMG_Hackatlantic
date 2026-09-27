@@ -23,8 +23,9 @@ How it works (plain HTTPS to the Vercel API, nothing else):
      idle 10 minutes → the station is available again. An unfinished workout
      is discarded.
 
-Terminal commands while running: a connect code, `end` (disconnect the user),
-`quit`.
+Terminal while running: a connect code (nobody connected) · any other text
+(someone connected: shown live on their phone's Test tab) · `end` (disconnect
+the user) · `quit`.
 """
 
 from __future__ import annotations
@@ -248,6 +249,7 @@ class Station:
                 self.stop.wait(3)
 
     def heartbeat_forever(self) -> None:
+        self.stop.wait(1.5)  # let the sensors deliver a few samples, so the first report is accurate
         while not self.stop.is_set():
             try:
                 sent = time.monotonic()
@@ -307,6 +309,21 @@ class Station:
         except ApiError as exc:
             log(f"Code not accepted: {exc}")
             return False
+
+    def send_message(self, text: str) -> bool:
+        """A line typed here, shown on the connected user's Test tab. False if
+        the user has meanwhile disconnected (the station is available again)."""
+        try:
+            self.api.call("POST", "message", {"text": text[:500]}, timeout=10)
+            log(f"→ sent to {self.user_name}'s phone")
+            return True
+        except ApiError as exc:
+            if exc.status == 409:
+                self.changed_at = time.monotonic()
+                self.apply_status({"status": "available"}, self.changed_at)
+                return False
+            log(f"Message not sent: {exc}")
+            return True
 
     def release(self) -> None:
         try:
@@ -460,7 +477,8 @@ def main() -> None:
     print(f"\n  activateMyo station \"{name}\" → {api.base}\n"
           f"  Sign in on your phone → Workout → Connect to station, then "
           f"{'show the QR code to the camera or ' if scanner else ''}type the code here.\n"
-          "  Commands: <code> · end (disconnect user) · quit\n", flush=True)
+          "  Type: <code> to connect · any text = message to the connected phone (Test tab) · "
+          "end (disconnect user) · quit\n", flush=True)
 
     lines: "queue.Queue[str]" = queue.Queue()
     threading.Thread(target=stdin_forever, args=(lines,), daemon=True, name="stdin").start()
@@ -482,9 +500,7 @@ def main() -> None:
                         station.release()
                     else:
                         log("Nobody is connected.")
-                elif station.connected:
-                    log(f"{station.user_name} is connected — type `end` first to connect someone else.")
-                else:
+                elif not station.connected or not station.send_message(line):
                     station.claim(line)
             if scanner is not None:
                 if station.connected:

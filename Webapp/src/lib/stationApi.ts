@@ -96,3 +96,10 @@ export interface LiveSnapshot {
 /** Disconnect from the station (an unfinished workout is discarded). Used on logout too. */
 export const releaseStation = () =>
   stationApi<{ ok: boolean }>("release", { method: "POST", body: {}, keepalive: true });
+
+/** A line typed in the station's terminal (shown on the Test tab; never stored). */
+export interface StationMessage {
+  seq: number;
+  at: number; // ms epoch
+  text: string;
+}
