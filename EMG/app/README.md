@@ -51,11 +51,17 @@ Workout screen ──start / next set / finish──►  Supabase Realtime  ─�
    Windows), e.g. `conda create -n myo python=3.12 && conda activate myo`, then:
    - **Windows / Apple-silicon Mac:** `pip install -r requirements.txt`
      (Windows-only Bluetooth packages are skipped on other systems).
-   - **Intel Mac or anything else that fails:** `pip install -r requirements.in "websockets<16"`
-     (unpinned; `dearpygui==2.3.1` has no Intel-Mac build).
+   - **Intel Mac, macOS < 14, or anything else that fails:**
+     `pip install -r requirements.in "websockets<16" "numba==0.62.1" "llvmlite==0.45.1"`
+     (`dearpygui==2.3.1` has no Intel-Mac build, and the newest llvmlite — pulled
+     in by LibEMG → librosa → numba — only has Mac builds for macOS 14+ on
+     Apple silicon; without the pins pip tries to compile it and fails with
+     *"Failed building wheel for llvmlite"*).
 
    An error like *"Could not find a version that satisfies aiohappyeyeballs==2.7.1
-   … Requires-Python >=3.10"* means the active Python is too old.
+   … Requires-Python >=3.10"* means the active Python is too old. If one package
+   fails to build, pip installs nothing — e.g. `No module named 'realtime'` or
+   `'bleak'` afterwards.
 2. `cp .env.example .env` and fill in `SUPABASE_URL` / `SUPABASE_ANON_KEY` — the
    same values as the web app's `VITE_SUPABASE_*`. Never the `service_role` key.
 3. `python src/bridge.py --check` — confirms messages go through Supabase Realtime.
