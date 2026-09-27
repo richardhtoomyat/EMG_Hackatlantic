@@ -48,6 +48,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
+flask
 fsspec==2026.9.0
     # via wfdb
 h5py==3.16.0

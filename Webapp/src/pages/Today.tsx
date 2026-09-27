@@ -39,6 +39,12 @@ export default function Today() {
 
       <BodyMetricReminder />
 
+      <iframe
+        src="http://localhost:5000/"
+        title="BLE streamer connection status"
+        className="w-full h-20 rounded-xl border border-track bg-surface my-2"
+      />
+
       <ScoreCard label="Readiness Score" score={READINESS.score} description={READINESS.description} />
 
       <div className="bg-surface rounded-2xl p-3.5 my-2">
