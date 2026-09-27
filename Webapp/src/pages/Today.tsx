@@ -49,7 +49,7 @@ export default function Today() {
         </Link>
       )}
 
-      <Link to="/playback" className="block bg-surface rounded-2xl p-3.5 my-2 text-sm text-accent font-semibold">
+      <Link to="/test" className="block bg-surface rounded-2xl p-3.5 my-2 text-sm text-accent font-semibold">
         Baseline and strain recordings
       </Link>
 

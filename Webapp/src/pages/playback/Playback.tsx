@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/authContext";
 import BodyMap from "../../components/BodyMap";
 import type { MuscleId } from "../../data/types";
 import { supabase } from "../../lib/supabase";
 import PassiveBaselineRecorder from "./PassiveBaselineRecorder";
-import { localTransport, type RecorderTransport } from "./recorderTransport";
+import type { RecorderTransport } from "./recorderTransport";
 import StrainRecorder, { type StrainRecording, type StrainResult } from "./StrainRecorder";
 import { canonicalChannel, placementLabel, SENSORS, withCanonicalKeys, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 
@@ -44,24 +43,11 @@ const DEFAULT_PLACEMENTS: SensorPlacements = {
   MyoWareSensorR: null,
 };
 
-/** Kiril's page (Today → "Baseline and strain recordings"): run.py on this computer. */
-export default function Playback() {
-  return (
-    <div className="flex-grow flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-serif font-light text-[27px] leading-tight">Recording playback</h1>
-        <Link to="/" className="text-sm text-accent">Back</Link>
-      </div>
-      <RecordingLab />
-    </div>
-  );
-}
-
 /**
- * Sensor placement, baseline, strain recording and playback. `transport` says
- * how to reach the sensors: run.py on localhost (default) or the QR station.
+ * Sensor placement, baseline, strain recording and playback (Kiril's recording
+ * feature), shown on the Test tab and run on the QR-connected station.
  */
-export function RecordingLab({ transport = localTransport }: { transport?: RecorderTransport }) {
+export function RecordingLab({ transport }: { transport: RecorderTransport }) {
   const { user } = useAuth();
   const [placements, setPlacements] = useState<SensorPlacements>(DEFAULT_PLACEMENTS);
   const [activeSensor, setActiveSensor] = useState<SensorChannel>(SENSORS[0]);

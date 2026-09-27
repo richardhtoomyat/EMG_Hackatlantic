@@ -1,6 +1,6 @@
 import type { MuscleId } from "../../data/types";
 
-// Must match ble.sensor_names in EMG/app/config.yml (run.py keys its results by these names).
+// Must match ble.sensor_names in EMG/app/config.yml (the station labels its results with these names).
 export const SENSORS = ["MyoWareSensorL", "MyoWareSensorR"] as const;
 export type SensorChannel = (typeof SENSORS)[number];
 
