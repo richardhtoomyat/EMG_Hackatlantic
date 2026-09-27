@@ -1,26 +1,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/authContext";
 import { uploadRecording } from "./recordingStorage";
+import { localTransport, type PassiveSummary, type RecorderTransport } from "./recorderTransport";
 import { SENSORS, type SensorPlacements } from "./sensorConfig";
-
-type PassiveSummary = {
-  sample_count: number;
-  duration_s: number;
-  channels: Record<string, { sample_count: number; median?: number; mad?: number }>;
-};
 
 type SavedBaseline = PassiveSummary & { placements: SensorPlacements };
 
-type Props = { placements: SensorPlacements; onSaved: () => Promise<void> };
+type Props = { placements: SensorPlacements; onSaved: () => Promise<void>; transport?: RecorderTransport };
 
-async function endPassiveRecording(): Promise<PassiveSummary> {
-  const response = await fetch("http://localhost:5000/end_passive", { method: "POST" });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? "Could not stop recording");
-  return result as PassiveSummary;
-}
-
-export default function PassiveBaselineRecorder({ placements, onSaved }: Props) {
+export default function PassiveBaselineRecorder({ placements, onSaved, transport = localTransport }: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -41,21 +29,21 @@ export default function PassiveBaselineRecorder({ placements, onSaved }: Props) 
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:5000/start_passive", { method: "POST" });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Recording request failed");
+      await transport.startBaseline(placements);
       setSummary(null);
       setSaved(false);
       setSecondsLeft(5);
       setRecording(true);
       window.setTimeout(() => {
         setBusy(true);
-        void endPassiveRecording()
-          .then(async (result) => {
+        void transport.stopBaseline()
+          .then(async ({ summary: result, saved: alreadySaved }) => {
             setSummary(result);
-            if (!user) throw new Error("Sign in to save this baseline");
-            const baseline: SavedBaseline = { ...result, placements };
-            await uploadRecording(user.id, 0, baseline);
+            if (!alreadySaved) {
+              if (!user) throw new Error("Sign in to save this baseline");
+              const baseline: SavedBaseline = { ...result, placements };
+              await uploadRecording(user.id, 0, baseline);
+            }
             setSaved(true);
             await onSaved();
           })

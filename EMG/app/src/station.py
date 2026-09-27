@@ -44,6 +44,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
+from lab import LabRecording
 from recorder import PairNormalizer, RepThresholds, SessionRecorder
 from sources import LibEMGSource, SampleSource, SimulatedSource
 
@@ -124,7 +125,8 @@ class Api:
 # ------------------------------------------------------------------- station
 class Station:
     def __init__(self, api: Api, source: SampleSource, thresholds: RepThresholds,
-                 calibration: Optional[list[dict]] = None) -> None:
+                 calibration: Optional[list[dict]] = None, sensor_names: Optional[list[str]] = None,
+                 missing_value: float = -1.0) -> None:
         self.api = api
         self.source = source
         self.thresholds = thresholds
@@ -142,6 +144,10 @@ class Station:
         self.batch: list[list[Optional[float]]] = []
         self.last_pct: tuple[Optional[float], Optional[float]] = (None, None)
         self.changed_at = 0.0  # last local connect/disconnect/start; older replies are stale
+        # Baseline / strain recording (Test tab), labelled with config.yml's sensor names.
+        self.lab: Optional[LabRecording] = None
+        self.sensor_names = list(sensor_names or ["MyoWareSensorL", "MyoWareSensorR"])[:2]
+        self.missing_value = missing_value
 
     # ------------------------------------------------------------- status
     @property
@@ -171,15 +177,22 @@ class Station:
                 self.session = None
             if not self.user_name:
                 self.batch = []
+                if self.lab is not None:
+                    log(f"{self.lab.mode.capitalize()} recording discarded (user disconnected).")
+                    self.lab = None
 
     # ------------------------------------------------------------- commands
     def handle(self, cmd: dict) -> None:
         kind, sid = cmd.get("type"), cmd.get("session_id")
         now = time.monotonic()
+        if cmd.get("mode") in ("baseline", "strain"):
+            self.handle_lab(kind, cmd, now)
+            return
         if kind == "start":
             with self.lock:
                 if self.session is not None and self.session.session_id == sid:
                     return
+                self.lab = None
                 self.session = SessionRecorder(
                     session_id=str(sid),
                     exercise_name=str(cmd.get("exercise_name") or "Workout"),
@@ -218,6 +231,53 @@ class Station:
                     why = {"user": "cancelled on the phone", "disconnect": "discarded — the user disconnected",
                            "timeout": "discarded — 10 minutes without activity"}.get(str(cmd.get("reason")), "discarded")
                     log(f"Recording {why}.")
+
+    def handle_lab(self, kind: Optional[str], cmd: dict, now: float) -> None:
+        """Kiril's baseline / strain recordings, started and stopped from the Test tab."""
+        mode = str(cmd["mode"])
+        if kind == "start":
+            with self.lock:
+                if self.session is not None:
+                    self.notify(f"Can't record a {mode} while a workout is being recorded.")
+                    return
+                unknown = [c["channel"] for c in cmd.get("channels") or [] if c.get("channel") not in self.sensor_names]
+                if unknown:
+                    self.notify(f"Unknown sensor {', '.join(unknown)} — this station has {', '.join(self.sensor_names)}.")
+                    return
+                self.lab = LabRecording(mode, now, placements=dict(cmd.get("placements") or {}),
+                                        selections=list(cmd.get("channels") or []))
+            log(f"Recording {mode}…")
+        elif kind == "finish":
+            with self.lock:
+                lab, self.lab = self.lab, None
+            if lab is None or lab.mode != mode:
+                return
+            rec_type, raw = lab.result(now, self.sensor_names, self.missing_value)
+            if not lab.rows:
+                self.notify(f"{mode.capitalize()} not saved: no samples from the sensors.")
+                return
+            if self.post_retry("recording", {"type": rec_type, "raw_data": raw}):
+                if mode == "baseline":
+                    stats = ", ".join(f"{n} median {c['median']:.1f} MAD {c['mad']:.1f}" if c.get("median") is not None
+                                      else f"{n} no data" for n, c in raw["channels"].items())
+                    log(f"Baseline saved ({len(lab.rows)} samples): {stats}")
+                else:
+                    log(f"Strain recording saved: {sum(r['sample_count'] for r in raw['recordings'])} readings")
+            else:
+                self.notify(f"{mode.capitalize()} could not be saved — see the station terminal.")
+        elif kind == "cancel":
+            with self.lock:
+                if self.lab is not None and self.lab.mode == mode:
+                    self.lab = None
+                    log(f"{mode.capitalize()} recording cancelled.")
+
+    def notify(self, text: str) -> None:
+        """A problem the phone should see: printed here and shown in the Test tab log."""
+        log(text)
+        try:
+            self.api.call("POST", "message", {"text": f"[station] {text}"[:500]}, timeout=10)
+        except ApiError:
+            pass
 
     def post_retry(self, path: str, body: dict, tries: int = 3) -> bool:
         for attempt in range(tries):
@@ -272,6 +332,8 @@ class Station:
                     self.last_pct = (left, right)
                     if self.session is not None:
                         self.session.feed(t, left, right)
+                    if self.lab is not None:
+                        self.lab.add(left_raw, right_raw)
                     if self.connected:
                         self.batch.append([round((t - self.t0) * 1000),
                                            None if left_raw is None else round(left_raw, 1),
@@ -432,6 +494,15 @@ def load_tuning() -> tuple[RepThresholds, Optional[list[dict]]]:
     return th, calibration
 
 
+def load_sensor_names() -> tuple[list[str], float]:
+    """config.yml ble.sensor_names (first = left, second = right) and the firmware's missing value."""
+    import yaml
+
+    ble = (yaml.safe_load((APP_DIR / "config.yml").read_text(encoding="utf-8")) or {}).get("ble") or {}
+    names = [str(n) for n in ble.get("sensor_names") or []] or ["MyoWareSensorL", "MyoWareSensorR"]
+    return names, float(ble.get("missing_value", -1))
+
+
 def ensure_registered(api: Api, name: Optional[str]) -> None:
     key = os.environ.get("STATION_KEY", "")
     if key:
@@ -479,7 +550,8 @@ def main() -> None:
 
     thresholds, calibration = load_tuning()
     source: SampleSource = SimulatedSource() if args.simulate else LibEMGSource()
-    station = Station(api, source, thresholds, calibration)
+    names, missing = load_sensor_names()
+    station = Station(api, source, thresholds, calibration, sensor_names=names, missing_value=missing)
     station.start_threads()
 
     scanner: Optional[QrScanner] = None

@@ -1,23 +1,27 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useAuth } from "../auth/authContext";
 import { ConnectCard, EnvelopePlot, StationPill } from "../components/StationRecorder";
 import { useStation, useStationMessages } from "../lib/useStation";
+import { RecordingLab } from "./playback/Playback";
+import { stationTransport } from "./playback/recorderTransport";
 
 /**
  * Test tab: check the link to the sensor station. Shows the connection, the
  * sensors and the live signal, and every line typed in the station's
- * terminal (python src/station.py), live.
+ * terminal (python src/station.py), live. Below that, Kiril's baseline /
+ * strain recording, run on the connected station.
  */
 export default function Test() {
   const { enabled, user } = useAuth();
   if (!enabled || !user) {
     return <Box>Sign in to connect to a sensor station.</Box>;
   }
-  return <StationTest />;
+  return <StationTest userId={user.id} />;
 }
 
-function StationTest() {
+function StationTest({ userId }: { userId: string }) {
   const st = useStation(() => {});
+  const transport = useMemo(() => stationTransport(userId), [userId]);
   const connectionKey = st.station ? `${st.station.id}:${st.station.connected_at ?? ""}` : null;
   const messages = useStationMessages(connectionKey);
   const log = useRef<HTMLDivElement>(null);
@@ -79,6 +83,13 @@ function StationTest() {
           <div className="text-[11px] tracking-wider text-muted uppercase">Right now</div>
           <div className="font-serif text-2xl" style={{ color: "#7FB8C9" }}>{fmt(m?.right_pct)}</div>
         </div>
+      </div>
+
+      <div className="mt-2">
+        <div className="text-[11px] tracking-wider text-muted uppercase">Baseline & strain</div>
+        <h3 className="font-serif font-light text-[20px] mb-1">Muscle recording</h3>
+        {!st.station.online && <Box>The station is offline — start <code>station.py</code> to record.</Box>}
+        <RecordingLab transport={transport} />
       </div>
 
       {st.error && <div role="alert" className="text-sm text-max">{st.error}</div>}

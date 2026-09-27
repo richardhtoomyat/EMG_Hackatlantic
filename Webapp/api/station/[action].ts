@@ -11,6 +11,7 @@
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
  *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
  *   POST /api/station/profile    {age | weight_kg}  → test write: one profile column of the connected user
+ *   POST /api/station/recording  {type, raw_data}   → a baseline (0) / strain (1) recording → emg_recordings
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -45,6 +46,8 @@ export function POST(req: Request) {
         return message(station, await readJson(req));
       case "profile":
         return profile(station, await readJson(req));
+      case "recording":
+        return saveRecording(station, await readJson(req));
       case "set":
         return saveSet(station, await readJson(req));
       case "finish":
@@ -221,6 +224,38 @@ async function profile(station: StationRow, body: Record<string, unknown>) {
     before: n(before[field]),
     after: n(after[field]),
   });
+}
+
+/**
+ * Kiril's baseline (type 0) / strain (type 1) recordings, computed on the
+ * station, saved for the connected user in the same shape run.py returns
+ * (the Playback / Test tab code reads them back).
+ */
+const MAX_RECORDING_BYTES = 3_500_000; // Vercel's request limit is 4.5 MB
+
+async function saveRecording(station: StationRow, body: { type?: unknown; raw_data?: unknown }) {
+  if (!station.current_user_id) throw new HttpError(409, "Nobody is connected to this station");
+  const type = body.type;
+  if (type !== 0 && type !== 1) throw new HttpError(400, "type must be 0 (baseline) or 1 (strain)");
+  const data = body.raw_data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new HttpError(400, "raw_data must be an object");
+  const d = data as Record<string, unknown>;
+  if (type === 0 && (typeof d.channels !== "object" || typeof d.placements !== "object")) {
+    throw new HttpError(400, "A baseline needs channels and placements");
+  }
+  if (type === 1 && (!Array.isArray(d.recordings) || d.recordings.length > 8)) {
+    throw new HttpError(400, "A strain recording needs 1-8 recordings");
+  }
+  if (JSON.stringify(d).length > MAX_RECORDING_BYTES) throw new HttpError(413, "Recording too large — record for a shorter time");
+  const row = check(
+    await db()
+      .from("emg_recordings")
+      .insert({ user_id: station.current_user_id, recording_type: type, raw_data: d })
+      .select("id")
+      .single(),
+    "save recording"
+  ) as { id: string };
+  return json({ ok: true, id: row.id });
 }
 
 /** The station may only save into the session it is recording, for the user connected to it. */

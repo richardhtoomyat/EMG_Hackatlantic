@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import BodyMap from "../../components/BodyMap";
 import { useAuth } from "../../auth/authContext";
 import { uploadRecording } from "./recordingStorage";
+import { localTransport, type RecorderTransport } from "./recorderTransport";
 import { MUSCLE_PLACEMENTS, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 import type { MuscleId } from "../../data/types";
 
@@ -24,6 +25,7 @@ type Props = {
   historicalTimestamp: string | null;
   onRecordingStart: () => void;
   onSaved: () => void;
+  transport?: RecorderTransport;
 };
 
 export default function StrainRecorder({
@@ -34,6 +36,7 @@ export default function StrainRecorder({
   historicalTimestamp,
   onRecordingStart,
   onSaved,
+  transport = localTransport,
 }: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);
@@ -85,13 +88,7 @@ export default function StrainRecorder({
         if (muscle_id === null || !baseline) return [];
         return [{ channel, muscle_id, baseline }];
       });
-      const response = await fetch("http://localhost:5000/start_strain", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channels }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not start strain recording");
+      await transport.startStrain(channels);
       setData(null);
       setSaved(false);
       setPlaying(false);
@@ -109,15 +106,19 @@ export default function StrainRecorder({
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:5000/end_strain", { method: "POST" });
-      const result = await response.json();
-      setRecording(false);
-      if (!response.ok) throw new Error(result.error ?? "Could not stop strain recording");
-      setData(result as StrainResult);
+      let result: StrainResult;
+      let alreadySaved: boolean;
+      try {
+        ({ result, saved: alreadySaved } = await transport.stopStrain());
+      } finally {
+        setRecording(false);
+      }
+      setData(result);
       setIndex(0);
-      setRecording(false);
-      if (!user) throw new Error("Sign in to save this strain recording");
-      await uploadRecording(user.id, 1, result);
+      if (!alreadySaved) {
+        if (!user) throw new Error("Sign in to save this strain recording");
+        await uploadRecording(user.id, 1, result);
+      }
       setSaved(true);
       onSaved();
     } catch (err) {
