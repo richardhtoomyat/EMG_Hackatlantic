@@ -5,6 +5,7 @@ import BodyMap from "../../components/BodyMap";
 import type { MuscleId } from "../../data/types";
 import { supabase } from "../../lib/supabase";
 import PassiveBaselineRecorder from "./PassiveBaselineRecorder";
+import { localTransport, type RecorderTransport } from "./recorderTransport";
 import StrainRecorder, { type StrainRecording, type StrainResult } from "./StrainRecorder";
 import { canonicalChannel, placementLabel, SENSORS, withCanonicalKeys, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 
@@ -43,7 +44,24 @@ const DEFAULT_PLACEMENTS: SensorPlacements = {
   MyoWareSensorR: null,
 };
 
+/** Kiril's page (Today → "Baseline and strain recordings"): run.py on this computer. */
 export default function Playback() {
+  return (
+    <div className="flex-grow flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="font-serif font-light text-[27px] leading-tight">Recording playback</h1>
+        <Link to="/" className="text-sm text-accent">Back</Link>
+      </div>
+      <RecordingLab />
+    </div>
+  );
+}
+
+/**
+ * Sensor placement, baseline, strain recording and playback. `transport` says
+ * how to reach the sensors: run.py on localhost (default) or the QR station.
+ */
+export function RecordingLab({ transport = localTransport }: { transport?: RecorderTransport }) {
   const { user } = useAuth();
   const [placements, setPlacements] = useState<SensorPlacements>(DEFAULT_PLACEMENTS);
   const [activeSensor, setActiveSensor] = useState<SensorChannel>(SENSORS[0]);
@@ -153,11 +171,7 @@ export default function Playback() {
   const readyForStrain = activeSensors.length > 0 && activeSensors.every((channel) => baselines[channel]);
 
   return (
-    <div className="flex-grow flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-serif font-light text-[27px] leading-tight">Recording playback</h1>
-        <Link to="/" className="text-sm text-accent">Back</Link>
-      </div>
+    <div className="flex flex-col">
       <p className="text-sm text-muted mb-3">Choose a sensor, then select its muscle on the chart. Disabled sensors are ignored.</p>
 
       <section className="bg-surface rounded-2xl p-3.5 my-2">
@@ -205,7 +219,7 @@ export default function Playback() {
         {activeSensors.length === 0 && <p className="text-xs text-muted mt-2">Select a placement for at least one sensor.</p>}
       </section>
 
-      <PassiveBaselineRecorder placements={placements} onSaved={loadBaselines} />
+      <PassiveBaselineRecorder placements={placements} onSaved={loadBaselines} transport={transport} />
       {!readyForStrain && activeSensors.length > 0 && !loadingBaselines && (
         <p className="text-sm text-muted mt-2">Record a baseline for each enabled sensor at its selected placement before starting strain playback.</p>
       )}
@@ -217,6 +231,7 @@ export default function Playback() {
         historicalTimestamp={selectedStrain?.created_at ?? null}
         onRecordingStart={() => setSelectedStrain(null)}
         onSaved={() => { void loadStrainHistory(); }}
+        transport={transport}
       />
 
       <section className="bg-surface rounded-2xl p-3.5 my-2">

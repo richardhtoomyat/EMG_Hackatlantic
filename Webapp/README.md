@@ -117,6 +117,8 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    | `GET /api/station/commands` | station | long-poll mailbox (≤ 8 s) |
    | `POST /api/station/live`, `set`, `finish` | station | live data; sets/summary saved to the **connected** user's session |
    | `POST /api/station/message` | station | a typed line for the connected phone (Redis, ~10 min, wiped on disconnect) |
+   | `POST /api/me/command {mode: "baseline" \| "strain"}` | phone | Test tab: start / finish / cancel a baseline or strain recording on the station |
+   | `POST /api/station/recording` | station | the finished baseline (0) / strain (1) recording → `emg_recordings` for the connected user |
 
    The station sends JSON only; Vercel checks it is recording that session
    for the connected user and writes fixed rows. The session ID and SQL to
@@ -154,7 +156,7 @@ signed out) and Logout is on the Profile screen.
 | `/session`  | Post-set/session summary — muscle map for the exercise, performance metrics, coach feedback |
 | `/history`  | Past sessions + weekly trends                                    |
 | `/coach`    | Coach share code + access management                              |
-| `/test`     | Station link test — connection, sensors, live signal, lines typed in the station terminal |
+| `/test`     | Station link test — connection, sensors, live signal, lines typed in the station terminal, and baseline / strain recording + playback through the station |
 | `/profile`  | Athlete profile, body metrics, connected devices                  |
 
 ## Architecture: hardcoded data today, real sensor data tomorrow

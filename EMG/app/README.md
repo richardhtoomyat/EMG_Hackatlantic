@@ -106,6 +106,15 @@ sensors and the live signal) — a quick way to check the whole link. Those
 lines are kept ~10 minutes in Redis and wiped when the user disconnects.
 Codes are single-use and expire after 2 minutes.
 
+**Baseline & strain on the Test tab.** Kiril's baseline / strain recording
+(originally `run.py` on `localhost:5000`) also runs through the station: on the
+phone's **Test** tab, pick each sensor's muscle, press *Start recording
+baseline* (5 s, relaxed), then *Start strain recording* / *Stop*. The station
+records the raw envelope and computes the same numbers as `run.py`
+(`src/lab.py`: per-sensor median + MAD at rest; strain = signal above
+median + 3·MAD, as % of that sensor's peak), and Vercel saves them to
+`emg_recordings` for the connected user. Sensor names come from `config.yml`.
+
 ### Tuning (`config.yml` → `recording:`)
 
 - `rep_thresholds`: a rep starts above `on_pct` and ends below `off_pct`; time

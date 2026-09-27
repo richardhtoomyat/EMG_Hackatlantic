@@ -11,7 +11,7 @@
  */
 import { friendlyCode, requireUser, sha256, type AuthUser, type StationRow } from "../_lib/auth.js";
 import { check, db } from "../_lib/db.js";
-import { actionOf, handle, HttpError, json, readJson, str } from "../_lib/http.js";
+import { actionOf, handle, HttpError, json, num, readJson, str } from "../_lib/http.js";
 import { live } from "../_lib/live.js";
 import { discardSession, isOnline, queueCommand, releaseIfIdle, releaseStation } from "../_lib/stations.js";
 
@@ -124,9 +124,13 @@ async function myStation(user: AuthUser) {
   });
 }
 
+/** Kiril's baseline / strain recordings, run on the station (see labCommand). */
+const LAB_MODES = ["baseline", "strain"] as const;
+
 async function command(user: AuthUser, body: Record<string, unknown>) {
   const s = await requireConnected(user);
   const type = body.type;
+  if (LAB_MODES.includes(body.mode as (typeof LAB_MODES)[number])) return labCommand(s, body);
   if (type === "start") {
     if (!isOnline(s)) throw new HttpError(409, "The station is offline — is the station program running?");
     if (s.recording_session_id) throw new HttpError(409, "Already recording on this station");
@@ -165,6 +169,57 @@ async function command(user: AuthUser, body: Record<string, unknown>) {
     return json({ ok: true });
   }
   throw new HttpError(400, "type must be start, next_set, finish or cancel");
+}
+
+/**
+ * Baseline / strain recording on the station (the Test tab's recording lab).
+ * The station records, computes the result like run.py and saves it to
+ * emg_recordings for the connected user via /api/station/recording.
+ *   start  {mode: "baseline", placements}                   placements: {sensor: muscle id | null}
+ *   start  {mode: "strain", channels: [{channel, muscle_id, median, mad}]}
+ *   finish {mode} · cancel {mode}
+ */
+async function labCommand(s: StationRow, body: Record<string, unknown>) {
+  const mode = body.mode as (typeof LAB_MODES)[number];
+  const type = body.type;
+  if (type === "start") {
+    if (!isOnline(s)) throw new HttpError(409, "The station is offline — is the station program running?");
+    if (s.recording_session_id) throw new HttpError(409, "A workout is being recorded on this station");
+    let payload: Record<string, unknown>;
+    if (mode === "baseline") {
+      const raw = body.placements;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "placements must be an object");
+      const entries = Object.entries(raw as Record<string, unknown>);
+      if (!entries.length || entries.length > 8) throw new HttpError(400, "placements must name 1-8 sensors");
+      const placements = Object.fromEntries(
+        entries.map(([k, v]) => [str(k, "sensor", 40), v == null ? null : str(v, "muscle id", 40)])
+      );
+      if (!Object.values(placements).some((v) => v)) throw new HttpError(400, "Choose a placement for at least one sensor");
+      payload = { mode, placements };
+    } else {
+      if (!Array.isArray(body.channels) || !body.channels.length || body.channels.length > 8) {
+        throw new HttpError(400, "Select at least one enabled sensor with a saved baseline");
+      }
+      const channels = body.channels.map((c) => {
+        const x = (c ?? {}) as Record<string, unknown>;
+        return {
+          channel: str(x.channel, "channel", 40),
+          muscle_id: str(x.muscle_id, "muscle_id", 40),
+          median: num(x.median, "median", -1e9, 1e9),
+          mad: num(x.mad ?? 0, "mad", -1e9, 1e9),
+        };
+      });
+      if (new Set(channels.map((c) => c.channel)).size !== channels.length) throw new HttpError(400, "Duplicate sensor selection");
+      payload = { mode, channels };
+    }
+    await queueCommand(s.id, "start", payload);
+    return json({ ok: true });
+  }
+  if (type === "finish" || type === "cancel") {
+    await queueCommand(s.id, type, { mode });
+    return json({ ok: true });
+  }
+  throw new HttpError(400, "type must be start, finish or cancel");
 }
 
 async function liveData(user: AuthUser, since: number) {
