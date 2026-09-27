@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/authContext";
 import { uploadRecording } from "./recordingStorage";
+import { SENSORS, type SensorPlacements } from "./sensorConfig";
 
 type PassiveSummary = {
   sample_count: number;
   duration_s: number;
   channels: Record<string, { sample_count: number; median?: number; mad?: number }>;
 };
+
+type SavedBaseline = PassiveSummary & { placements: SensorPlacements };
+
+type Props = { placements: SensorPlacements; onSaved: () => Promise<void> };
 
 async function endPassiveRecording(): Promise<PassiveSummary> {
   const response = await fetch("http://localhost:5000/end_passive", { method: "POST" });
@@ -15,7 +20,7 @@ async function endPassiveRecording(): Promise<PassiveSummary> {
   return result as PassiveSummary;
 }
 
-export default function PassiveBaselineRecorder() {
+export default function PassiveBaselineRecorder({ placements, onSaved }: Props) {
   const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -49,8 +54,10 @@ export default function PassiveBaselineRecorder() {
           .then(async (result) => {
             setSummary(result);
             if (!user) throw new Error("Sign in to save this baseline");
-            await uploadRecording(user.id, 0, result);
+            const baseline: SavedBaseline = { ...result, placements };
+            await uploadRecording(user.id, 0, baseline);
             setSaved(true);
+            await onSaved();
           })
           .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
           .finally(() => {
@@ -70,11 +77,14 @@ export default function PassiveBaselineRecorder() {
       <button
         type="button"
         onClick={toggleRecording}
-        disabled={busy || recording}
+        disabled={busy || recording || !SENSORS.some((channel) => placements[channel] !== null)}
         className="w-full h-11 rounded-full bg-accent text-bg text-sm font-semibold disabled:opacity-60"
       >
         {busy ? "Please wait..." : recording ? `Recording baseline (${secondsLeft})...` : "Start recording baseline"}
       </button>
+      {!SENSORS.some((channel) => placements[channel] !== null) && (
+        <p className="text-xs text-muted mt-2">Choose a placement for at least one sensor to record its baseline.</p>
+      )}
       {recording && <p className="text-xs text-muted mt-2">{secondsLeft} seconds remaining</p>}
       {error && <p role="alert" className="text-xs text-max mt-2">{error}</p>}
       {saved && <p className="text-xs text-accent mt-2">Baseline saved to Supabase.</p>}
