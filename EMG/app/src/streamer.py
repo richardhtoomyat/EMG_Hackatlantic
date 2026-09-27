@@ -76,10 +76,8 @@ def _append_sample(smm: SharedMemoryManager, sample: Sequence[float], num_channe
 
     row: NDArray[np.float64] = np.asarray(sample, dtype=np.float64).reshape(1, num_channels)
 
-    # LibEMG buffers are newest-first (row 0 = latest), like its bundled streamers;
-    # OnlineDataHandler.get_data(N) returns the first N rows.
     def shift_buffer(buffer: NDArray[np.float64]) -> NDArray[np.float64]:
-        return np.concatenate((row, buffer[:-1, :]), axis=0)
+        return np.concatenate((buffer[1:, :], row), axis=0)
 
     def increment_count(count: NDArray[np.int32]) -> NDArray[np.int32]:
         return count + np.int32(1)
