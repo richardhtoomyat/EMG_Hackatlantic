@@ -7,8 +7,10 @@ import StatGrid from "../components/StatGrid";
 import WeekBars from "../components/WeekBars";
 import { MuscleStatList } from "../components/StatGrid";
 import BodyMetricReminder from "../components/BodyMetricReminder";
+import { useAuth } from "../auth/authContext";
 import { useAppData } from "../data/dataContext";
 import { mergeExercises } from "../lib/muscleMap";
+import { supabase } from "../lib/supabase";
 
 export default function Today() {
   const { ATHLETE, READINESS, SESSION_HISTORY, TODAY_METRICS, WEEKLY_READINESS_TREND_PCT, WEEK_SUMMARY } =
@@ -113,12 +115,24 @@ async function endPassiveRecording(): Promise<PassiveSummary> {
   return result as PassiveSummary;
 }
 
+async function uploadRecording(userId: string, recordingType: 0 | 1, rawData: unknown): Promise<void> {
+  if (!supabase) throw new Error("Supabase is not configured");
+  const { error } = await supabase.from("emg_recordings").insert({
+    user_id: userId,
+    recording_type: recordingType,
+    raw_data: rawData,
+  });
+  if (error) throw error;
+}
+
 function PassiveBaselineRecorder() {
+  const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(5);
   const [summary, setSummary] = useState<PassiveSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (!recording) return;
@@ -136,12 +150,18 @@ function PassiveBaselineRecorder() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Recording request failed");
       setSummary(null);
+      setSaved(false);
       setSecondsLeft(5);
       setRecording(true);
       window.setTimeout(() => {
         setBusy(true);
         void endPassiveRecording()
-          .then(setSummary)
+          .then(async (result) => {
+            setSummary(result);
+            if (!user) throw new Error("Sign in to save this baseline");
+            await uploadRecording(user.id, 0, result);
+            setSaved(true);
+          })
           .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
           .finally(() => {
             setRecording(false);
@@ -167,6 +187,7 @@ function PassiveBaselineRecorder() {
       </button>
       {recording && <p className="text-xs text-muted mt-2">{secondsLeft} seconds remaining</p>}
       {error && <p role="alert" className="text-xs text-max mt-2">{error}</p>}
+      {saved && <p className="text-xs text-accent mt-2">Baseline saved to Supabase.</p>}
       {summary && (
         <div className="text-xs text-muted mt-3">
           <p>{summary.sample_count} samples over {summary.duration_s.toFixed(1)} seconds</p>
@@ -193,6 +214,7 @@ type StrainRecording = {
 };
 
 function StrainRecorder() {
+  const { user } = useAuth();
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -200,6 +222,7 @@ function StrainRecorder() {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const current = data?.readings[index];
 
   useEffect(() => {
@@ -229,6 +252,7 @@ function StrainRecorder() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Could not start strain recording");
       setData(null);
+      setSaved(false);
       setPlaying(false);
       setIndex(0);
       setElapsed(0);
@@ -251,6 +275,9 @@ function StrainRecorder() {
       setData(result as StrainRecording);
       setIndex(0);
       setRecording(false);
+      if (!user) throw new Error("Sign in to save this strain recording");
+      await uploadRecording(user.id, 1, result);
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -271,6 +298,7 @@ function StrainRecorder() {
         {busy ? "Please wait…" : recording ? `Stop recording · ${elapsed}s` : "Start strain recording"}
       </button>
       {error && <p role="alert" className="text-xs text-max mt-2">{error}</p>}
+      {saved && <p className="text-xs text-accent mt-2">Strain recording saved to Supabase.</p>}
       {data && current && (
         <>
           <div className="bg-[#FAFAFA] rounded-xl p-2 mt-3">
