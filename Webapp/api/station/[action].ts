@@ -10,6 +10,7 @@
  *   POST /api/station/set        {session_id, set}  → save one set for the connected user
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
  *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
+ *   POST /api/station/profile    {age}              → test write: set the connected user's profiles.age
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -42,6 +43,8 @@ export function POST(req: Request) {
         return liveData(station, await readJson(req));
       case "message":
         return message(station, await readJson(req));
+      case "profile":
+        return profile(station, await readJson(req));
       case "set":
         return saveSet(station, await readJson(req));
       case "finish":
@@ -181,6 +184,25 @@ async function message(station: StationRow, body: { text?: unknown }) {
   const text = str(body.text, "text", 500);
   const seq = await live().pushMessage(station.id, text);
   return json({ ok: true, seq });
+}
+
+/**
+ * Test write from the station terminal (`/age 25`): a fixed update of one
+ * column, only for the user connected to this station.
+ */
+async function profile(station: StationRow, body: { age?: unknown }) {
+  if (!station.current_user_id) throw new HttpError(409, "Nobody is connected to this station");
+  const age = Math.round(num(body.age, "age", 5, 120));
+  const before = check(
+    await db().from("profiles").select("age").eq("id", station.current_user_id).maybeSingle(),
+    "read profile"
+  ) as { age: number | null } | null;
+  if (!before) throw new HttpError(404, "The connected user has no profile row");
+  const after = check(
+    await db().from("profiles").update({ age }).eq("id", station.current_user_id).select("age").single(),
+    "update profile"
+  ) as { age: number | null };
+  return json({ ok: true, user_name: await userName(station.current_user_id), before: before.age, after: after.age });
 }
 
 /** The station may only save into the session it is recording, for the user connected to it. */
