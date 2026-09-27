@@ -26,7 +26,7 @@ The first configured sensor is the output row clock. Each of its notifications a
 Install the dependencies from `requirements.txt` (or use `pip-sync requirements.txt` with pip-tools), power on the configured shields, and run:
 
 ```powershell
-python src/streamer.py
+python src/data_access/streamer.py
 ```
 
 The streamer keeps scanning for configured names, connects when each shield appears, and retries after disconnects.
@@ -112,7 +112,7 @@ Codes are single-use and expire after 2 minutes.
 
 ### Things to watch when running LibEMG + the MyoWare rig
 
-- **Run one reader at a time.** `streamer.py`'s own `__main__`, `run.py` and
+- **Run one reader at a time.** `data_access/streamer.py`'s own `__main__`, `run.py` and
   `station.py` each start a BLE streamer process. LibEMG lets the second one attach to the
   existing shared-memory buffer ("emg already exists in shared memory"), but
   each MyoWare shield accepts only one BLE connection, so two streamers fight

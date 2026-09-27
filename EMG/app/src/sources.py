@@ -27,7 +27,7 @@ class LibEMGSource:
     """
 
     def __init__(self, missing_value: float = -1.0, nominal_rate_hz: float = 20.0) -> None:
-        from streamer import get_online_handler, load_config  # lazy: pulls in libemg + bleak
+        from data_access.streamer import get_online_handler, load_config  # lazy: pulls in libemg + bleak
 
         self.config = load_config()
         self.handler = get_online_handler()

@@ -1,3 +1,4 @@
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { MuscleId, MuscleMap } from "../data/types";
 
 /**
@@ -21,23 +22,63 @@ const COLORS: Record<"primary" | "secondary" | "untargeted", string> = {
   untargeted: "#D8D8D8",
 };
 
-function fillFor(muscles: MuscleMap, id: MuscleId): string {
+function strainColor(value: number): string {
+  const amount = Math.max(0, Math.min(100, value)) / 100;
+  const gray = [216, 216, 216];
+  const red = [200, 32, 47];
+  const rgb = gray.map((start, index) => Math.round(start + (red[index] - start) * amount));
+  return `rgb(${rgb.join(",")})`;
+}
+
+function fillFor(
+  muscles: MuscleMap,
+  id: MuscleId,
+  activation?: Partial<Record<MuscleId, number>>,
+  highlights?: Partial<Record<MuscleId, string>>,
+): string {
+  const value = activation?.[id];
+  if (value !== undefined) return strainColor(value);
+  if (highlights?.[id]) return highlights[id]!;
   return COLORS[muscles[id] ?? "untargeted"];
 }
 
 export interface BodyMapProps {
   muscles: MuscleMap;
+  activation?: Partial<Record<MuscleId, number>>;
+  highlights?: Partial<Record<MuscleId, string>>;
   className?: string;
+  onMuscleClick?: (id: MuscleId) => void;
 }
 
-export default function BodyMap({ muscles, className }: BodyMapProps) {
-  const f = (id: MuscleId) => fillFor(muscles, id);
+export default function BodyMap({ muscles, activation, highlights, className, onMuscleClick }: BodyMapProps) {
+  const f = (id: MuscleId) => fillFor(muscles, id, activation, highlights);
+  const muscleProps = (id: MuscleId) => ({
+    fill: f(id),
+    ...(highlights?.[id] && activation?.[id] === undefined
+      ? { stroke: "#735000", strokeWidth: 3 }
+      : {}),
+    ...(onMuscleClick
+      ? {
+          role: "button" as const,
+          tabIndex: 0,
+          "aria-label": `Select ${id}`,
+          style: { cursor: "pointer" },
+          onClick: () => onMuscleClick(id),
+          onKeyDown: (event: ReactKeyboardEvent<SVGPathElement>) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onMuscleClick(id);
+            }
+          },
+        }
+      : {}),
+  });
 
   return (
     <svg
       viewBox="0 0 620 478"
-      role="img"
-      aria-label="Muscle activation diagram, front and back views"
+      role={onMuscleClick ? "group" : "img"}
+      aria-label={onMuscleClick ? "Select a muscle on the front or back body map" : "Muscle activation diagram, front and back views"}
       className={className}
     >
       <rect width={620} height={478} fill="#ffffff" />
@@ -75,27 +116,27 @@ export default function BodyMap({ muscles, className }: BodyMapProps) {
           strokeLinejoin="round"
           strokeLinecap="round"
         >
-          <path id="f-traps-l" fill={f("f-traps-l")} d="M131 68 C122 74 112 79 105 84 C103 87 105 91 109 90 C117 86 126 80 133 74 C134 71 133 68 131 68 Z" />
-          <path id="f-traps-r" fill={f("f-traps-r")} d="M149 68 C158 74 168 79 175 84 C177 87 175 91 171 90 C163 86 154 80 147 74 C146 71 147 68 149 68 Z" />
-          <path id="f-delt-l" fill={f("f-delt-l")} d="M97 90 C105 89 111 94 112 101 C112 108 108 115 102 118 C96 120 91 116 89 109 C87 101 90 91 97 90 Z" />
-          <path id="f-delt-r" fill={f("f-delt-r")} d="M183 90 C175 89 169 94 168 101 C168 108 172 115 178 118 C184 120 189 116 191 109 C193 101 190 91 183 90 Z" />
-          <path id="f-pec-l" fill={f("f-pec-l")} d="M138 97 C128 94 118 95 113 100 C109 105 110 116 115 124 C121 131 130 135 138 137 Z" />
-          <path id="f-pec-r" fill={f("f-pec-r")} d="M142 97 C152 94 162 95 167 100 C171 105 170 116 165 124 C159 131 150 135 142 137 Z" />
-          <path id="f-bicep-l" fill={f("f-bicep-l")} d="M95 122 C98 130 99 142 98 154 C97 164 95 172 92 179 C90 172 90 162 90 150 C90 138 91 128 95 122 Z" />
-          <path id="f-bicep-r" fill={f("f-bicep-r")} d="M185 122 C182 130 181 142 182 154 C183 164 185 172 188 179 C190 172 190 162 190 150 C190 138 189 128 185 122 Z" />
-          <path id="f-forearm-l" fill={f("f-forearm-l")} d="M91 184 C93 192 90 200 85 208 C80 216 76 222 74 227 C72 224 73 218 77 211 C82 202 87 192 88 185 Z" />
-          <path id="f-forearm-r" fill={f("f-forearm-r")} d="M189 184 C187 192 190 200 195 208 C200 216 204 222 206 227 C208 224 207 218 203 211 C198 202 193 192 192 185 Z" />
+          <path id="f-traps-l" {...muscleProps("f-traps-l")} d="M131 68 C122 74 112 79 105 84 C103 87 105 91 109 90 C117 86 126 80 133 74 C134 71 133 68 131 68 Z" />
+          <path id="f-traps-r" {...muscleProps("f-traps-r")} d="M149 68 C158 74 168 79 175 84 C177 87 175 91 171 90 C163 86 154 80 147 74 C146 71 147 68 149 68 Z" />
+          <path id="f-delt-l" {...muscleProps("f-delt-l")} d="M97 90 C105 89 111 94 112 101 C112 108 108 115 102 118 C96 120 91 116 89 109 C87 101 90 91 97 90 Z" />
+          <path id="f-delt-r" {...muscleProps("f-delt-r")} d="M183 90 C175 89 169 94 168 101 C168 108 172 115 178 118 C184 120 189 116 191 109 C193 101 190 91 183 90 Z" />
+          <path id="f-pec-l" {...muscleProps("f-pec-l")} d="M138 97 C128 94 118 95 113 100 C109 105 110 116 115 124 C121 131 130 135 138 137 Z" />
+          <path id="f-pec-r" {...muscleProps("f-pec-r")} d="M142 97 C152 94 162 95 167 100 C171 105 170 116 165 124 C159 131 150 135 142 137 Z" />
+          <path id="f-bicep-l" {...muscleProps("f-bicep-l")} d="M95 122 C98 130 99 142 98 154 C97 164 95 172 92 179 C90 172 90 162 90 150 C90 138 91 128 95 122 Z" />
+          <path id="f-bicep-r" {...muscleProps("f-bicep-r")} d="M185 122 C182 130 181 142 182 154 C183 164 185 172 188 179 C190 172 190 162 190 150 C190 138 189 128 185 122 Z" />
+          <path id="f-forearm-l" {...muscleProps("f-forearm-l")} d="M91 184 C93 192 90 200 85 208 C80 216 76 222 74 227 C72 224 73 218 77 211 C82 202 87 192 88 185 Z" />
+          <path id="f-forearm-r" {...muscleProps("f-forearm-r")} d="M189 184 C187 192 190 200 195 208 C200 216 204 222 206 227 C208 224 207 218 203 211 C198 202 193 192 192 185 Z" />
           <path
             id="f-abs"
-            fill={f("f-abs")}
+            {...muscleProps("f-abs")}
             d="M126 143 C134 139 146 139 154 143 C156 155 156 170 153 183 C151 193 147 201 140 204
                           C133 201 129 193 127 183 C124 170 124 155 126 143 Z
                           M140 141 L140 202 M128 161 C134 159 146 159 152 161 M129 179 C135 177 145 177 151 179 M132 194 C137 192 143 192 148 194"
           />
-          <path id="f-oblique-l" fill={f("f-oblique-l")} d="M124 130 C118 142 115 158 117 174 C119 187 125 197 132 203 C133 196 130 188 126 181 C121 170 120 148 126 134 Z" />
-          <path id="f-oblique-r" fill={f("f-oblique-r")} d="M156 130 C162 142 165 158 163 174 C161 187 155 197 148 203 C147 196 150 188 154 181 C159 170 160 148 154 134 Z" />
-          <path id="f-quad-l" fill={f("f-quad-l")} d="M105 246 C103 260 104 276 108 292 C111 306 114 320 116 328 C121 332 127 331 131 327 C133 312 135 294 136 276 C136.5 266 137.5 258 138 254 C128 252 117 250 109 248 Z" />
-          <path id="f-quad-r" fill={f("f-quad-r")} d="M175 246 C177 260 176 276 172 292 C169 306 166 320 164 328 C159 332 153 331 149 327 C147 312 145 294 144 276 C143.5 266 142.5 258 142 254 C152 252 163 250 171 248 Z" />
+          <path id="f-oblique-l" {...muscleProps("f-oblique-l")} d="M124 130 C118 142 115 158 117 174 C119 187 125 197 132 203 C133 196 130 188 126 181 C121 170 120 148 126 134 Z" />
+          <path id="f-oblique-r" {...muscleProps("f-oblique-r")} d="M156 130 C162 142 165 158 163 174 C161 187 155 197 148 203 C147 196 150 188 154 181 C159 170 160 148 154 134 Z" />
+          <path id="f-quad-l" {...muscleProps("f-quad-l")} d="M105 246 C103 260 104 276 108 292 C111 306 114 320 116 328 C121 332 127 331 131 327 C133 312 135 294 136 276 C136.5 266 137.5 258 138 254 C128 252 117 250 109 248 Z" />
+          <path id="f-quad-r" {...muscleProps("f-quad-r")} d="M175 246 C177 260 176 276 172 292 C169 306 166 320 164 328 C159 332 153 331 149 327 C147 312 145 294 144 276 C143.5 266 142.5 258 142 254 C152 252 163 250 171 248 Z" />
         </g>
 
         <path
@@ -123,28 +164,28 @@ export default function BodyMap({ muscles, className }: BodyMapProps) {
         >
           <path
             id="b-traps"
-            fill={f("b-traps")}
+            {...muscleProps("b-traps")}
             d="M140 60 C147 63 155 69 162 77 C169 84 175 91 179 98 C173 102 168 109 165 117 C162 125 160 132 159 139 C153 133 147 130 140 130 C133 130 127 133 121 139 C120 132 118 125 115 117 C112 109 107 102 101 98 C105 91 111 84 118 77 C125 69 133 63 140 60 Z"
           />
-          <path id="b-delt-l" fill={f("b-delt-l")} d="M97 90 C105 89 111 94 112 101 C112 108 108 115 102 118 C96 120 91 116 89 109 C87 101 90 91 97 90 Z" />
-          <path id="b-delt-r" fill={f("b-delt-r")} d="M183 90 C175 89 169 94 168 101 C168 108 172 115 178 118 C184 120 189 116 191 109 C193 101 190 91 183 90 Z" />
-          <path id="b-lat-l" fill={f("b-lat-l")} d="M104 125 C111 121 119 122 125 127 C130 131 134 138 136 146 C136 152 134 158 130 163 C123 158 116 150 111 141 C107 134 105 129 104 125 Z" />
-          <path id="b-lat-r" fill={f("b-lat-r")} d="M176 125 C169 121 161 122 155 127 C150 131 146 138 144 146 C144 152 146 158 150 163 C157 158 164 150 169 141 C173 134 175 129 176 125 Z" />
-          <path id="b-tricep-l" fill={f("b-tricep-l")} d="M94 121 C91 127 89 138 90 151 C91 163 93 172 95 179 C97 172 98 161 98 147 C98 134 97 127 94 121 Z" />
-          <path id="b-tricep-r" fill={f("b-tricep-r")} d="M186 121 C189 127 191 138 190 151 C189 163 187 172 185 179 C183 172 182 161 182 147 C182 134 183 127 186 121 Z" />
-          <path id="b-forearm-l" fill={f("b-forearm-l")} d="M91 184 C93 192 90 200 85 208 C80 216 76 222 74 227 C72 224 73 218 77 211 C82 202 87 192 88 185 Z" />
-          <path id="b-forearm-r" fill={f("b-forearm-r")} d="M189 184 C187 192 190 200 195 208 C200 216 204 222 206 227 C208 224 207 218 203 211 C198 202 193 192 192 185 Z" />
+          <path id="b-delt-l" {...muscleProps("b-delt-l")} d="M97 90 C105 89 111 94 112 101 C112 108 108 115 102 118 C96 120 91 116 89 109 C87 101 90 91 97 90 Z" />
+          <path id="b-delt-r" {...muscleProps("b-delt-r")} d="M183 90 C175 89 169 94 168 101 C168 108 172 115 178 118 C184 120 189 116 191 109 C193 101 190 91 183 90 Z" />
+          <path id="b-lat-l" {...muscleProps("b-lat-l")} d="M104 125 C111 121 119 122 125 127 C130 131 134 138 136 146 C136 152 134 158 130 163 C123 158 116 150 111 141 C107 134 105 129 104 125 Z" />
+          <path id="b-lat-r" {...muscleProps("b-lat-r")} d="M176 125 C169 121 161 122 155 127 C150 131 146 138 144 146 C144 152 146 158 150 163 C157 158 164 150 169 141 C173 134 175 129 176 125 Z" />
+          <path id="b-tricep-l" {...muscleProps("b-tricep-l")} d="M94 121 C91 127 89 138 90 151 C91 163 93 172 95 179 C97 172 98 161 98 147 C98 134 97 127 94 121 Z" />
+          <path id="b-tricep-r" {...muscleProps("b-tricep-r")} d="M186 121 C189 127 191 138 190 151 C189 163 187 172 185 179 C183 172 182 161 182 147 C182 134 183 127 186 121 Z" />
+          <path id="b-forearm-l" {...muscleProps("b-forearm-l")} d="M91 184 C93 192 90 200 85 208 C80 216 76 222 74 227 C72 224 73 218 77 211 C82 202 87 192 88 185 Z" />
+          <path id="b-forearm-r" {...muscleProps("b-forearm-r")} d="M189 184 C187 192 190 200 195 208 C200 216 204 222 206 227 C208 224 207 218 203 211 C198 202 193 192 192 185 Z" />
           <path
             id="b-lowerback"
-            fill={f("b-lowerback")}
+            {...muscleProps("b-lowerback")}
             d="M135 150 C132 160 131 172 133 183 C134 190 136 194 140 195 C144 194 146 190 147 183 C149 172 148 160 145 150 C142 152 138 152 135 150 Z"
           />
-          <path id="b-ham-l" fill={f("b-ham-l")} d="M108 261 C105 273 106 289 110 304 C113 316 116 325 118 329 C123 333 129 332 132 328 C134 313 136 295 137 278 C137 270 138 264 138 260 C129 257 117 258 108 261 Z" />
-          <path id="b-ham-r" fill={f("b-ham-r")} d="M172 261 C175 273 174 289 170 304 C167 316 164 325 162 329 C157 333 151 332 148 328 C146 313 144 295 143 278 C143 270 142 264 142 260 C151 257 163 258 172 261 Z" />
-          <path id="b-glute-l" fill={f("b-glute-l")} d="M139 219 C129 217 118 221 112 229 C107 236 106 246 110 254 C115 261 126 263 134 259 C137 257 139 253 139 249 C139.5 240 139 228 139 219 Z" />
-          <path id="b-glute-r" fill={f("b-glute-r")} d="M141 219 C151 217 162 221 168 229 C173 236 174 246 170 254 C165 261 154 263 146 259 C143 257 141 253 141 249 C140.5 240 141 228 141 219 Z" />
-          <path id="b-calf-l" fill={f("b-calf-l")} d="M118 336 C116 346 118 358 122 368 C126 377 128 389 129 401 C129 409 129 416 128 421 C130 417 131 408 131 396 C131 378 131 356 131 339 C127 336 122 335 118 336 Z" />
-          <path id="b-calf-r" fill={f("b-calf-r")} d="M162 336 C164 346 162 358 158 368 C154 377 152 389 151 401 C151 409 151 416 152 421 C150 417 149 408 149 396 C149 378 149 356 149 339 C153 336 158 335 162 336 Z" />
+          <path id="b-ham-l" {...muscleProps("b-ham-l")} d="M108 261 C105 273 106 289 110 304 C113 316 116 325 118 329 C123 333 129 332 132 328 C134 313 136 295 137 278 C137 270 138 264 138 260 C129 257 117 258 108 261 Z" />
+          <path id="b-ham-r" {...muscleProps("b-ham-r")} d="M172 261 C175 273 174 289 170 304 C167 316 164 325 162 329 C157 333 151 332 148 328 C146 313 144 295 143 278 C143 270 142 264 142 260 C151 257 163 258 172 261 Z" />
+          <path id="b-glute-l" {...muscleProps("b-glute-l")} d="M139 219 C129 217 118 221 112 229 C107 236 106 246 110 254 C115 261 126 263 134 259 C137 257 139 253 139 249 C139.5 240 139 228 139 219 Z" />
+          <path id="b-glute-r" {...muscleProps("b-glute-r")} d="M141 219 C151 217 162 221 168 229 C173 236 174 246 170 254 C165 261 154 263 146 259 C143 257 141 253 141 249 C140.5 240 141 228 141 219 Z" />
+          <path id="b-calf-l" {...muscleProps("b-calf-l")} d="M118 336 C116 346 118 358 122 368 C126 377 128 389 129 401 C129 409 129 416 128 421 C130 417 131 408 131 396 C131 378 131 356 131 339 C127 336 122 335 118 336 Z" />
+          <path id="b-calf-r" {...muscleProps("b-calf-r")} d="M162 336 C164 346 162 358 158 368 C154 377 152 389 151 401 C151 409 151 416 152 421 C150 417 149 408 149 396 C149 378 149 356 149 339 C153 336 158 335 162 336 Z" />
         </g>
 
         <path fill="none" stroke="#9c9c9c" strokeWidth={1.8} strokeLinecap="round" d="M140 133 L140 143" />

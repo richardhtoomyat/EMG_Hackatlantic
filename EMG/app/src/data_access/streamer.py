@@ -28,6 +28,37 @@ from libemg.shared_memory_manager import SharedMemoryManager
 BUFFER_LENGTH: int = 2000
 
 
+class OnlineEMGStream:
+    """Read newly arrived EMG rows from a LibEMG online data handler."""
+
+    def __init__(self, handler: OnlineDataHandler) -> None:
+        self._handler = handler
+        self._last_count = 0
+
+    def reset(self) -> None:
+        """Mark the current stream position as the beginning of a capture."""
+        _, counts = self._handler.get_data(N=0, filter=False)
+        self._last_count = int(counts.get("emg", 0))
+
+    def read_new_samples(self) -> NDArray[np.float64]:
+        """Return rows received since the previous read or reset."""
+        _, counts = self._handler.get_data(N=0, filter=False)
+        current_count = int(counts.get("emg", 0))
+        new_count = current_count - self._last_count
+        if new_count <= 0:
+            return np.empty((0, 0), dtype=np.float64)
+
+        data, _ = self._handler.get_data(N=new_count, filter=False)
+        self._last_count = current_count
+        samples = np.asarray(data["emg"], dtype=np.float64)
+        if samples.ndim == 1:
+            samples = samples.reshape(1, -1)
+        if samples.ndim != 2:
+            raise ValueError("OnlineDataHandler returned EMG data with an invalid shape")
+        # get_data(N) returns the top N rows = the newest N, newest first; oldest first here.
+        return samples[::-1]
+
+
 @dataclass(frozen=True)
 class StreamerConfig:
     sensor_names: tuple[str, ...]
@@ -43,7 +74,7 @@ class StreamerConfig:
 
 def load_config(path: Path | None = None) -> StreamerConfig:
     """Read and validate BLE settings when the streamer is started."""
-    config_path = path or Path(__file__).resolve().parents[1] / "config.yml"
+    config_path = path or Path(__file__).resolve().parents[2] / "config.yml"
     with config_path.open("r", encoding="utf-8") as config_file:
         raw: dict[str, Any] = yaml.safe_load(config_file) or {}
 
