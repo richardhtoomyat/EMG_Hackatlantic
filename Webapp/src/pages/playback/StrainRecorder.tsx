@@ -5,7 +5,7 @@ import { uploadRecording } from "./recordingStorage";
 import { MUSCLE_PLACEMENTS, SENSORS, type SensorChannel, type SensorPlacements } from "./sensorConfig";
 import type { MuscleId } from "../../data/types";
 
-type StrainReading = { time_s: number; raw: number; strain_pct: number };
+type StrainReading = { time_s: number; raw: number; above_rest?: number; strain_pct: number };
 export type StrainRecording = {
   channel: string;
   muscle_id: MuscleId;
@@ -136,7 +136,7 @@ export default function StrainRecorder({
   return (
     <section className="bg-surface rounded-2xl p-3.5 my-2">
       <div className="text-[11px] tracking-wider text-muted uppercase">Muscle strain playback</div>
-      <p className="text-xs text-muted mt-1">Capture strain for each enabled sensor and replay them together.</p>
+      <p className="text-xs text-muted mt-1">0% is the passive baseline; 100% is the strongest above-rest signal in this recording, per sensor.</p>
       <button
         type="button"
         onClick={recording ? stop : start}
@@ -168,7 +168,7 @@ export default function StrainRecorder({
               ) : <p key={recording.channel}>{recording.channel}: no valid readings</p>;
             })}
           </div>
-          <p className="text-[11px] text-muted mt-1">Gray is at baseline; red is higher activity.</p>
+          <p className="text-[11px] text-muted mt-1">Gray is at baseline; red is higher activity. Percentages are relative to each sensor's peak in this recording.</p>
           <input
             aria-label="Strain playback position"
             type="range"

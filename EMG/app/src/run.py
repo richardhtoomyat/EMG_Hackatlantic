@@ -116,21 +116,30 @@ def end_strain_recording():
                 channel_index = config.sensor_names.index(channel_name)
                 baseline_median = selection["median"]
                 baseline_mad = selection["mad"]
-                scale = max(abs(baseline_median), 3 * abs(baseline_mad), 1e-6)
+                rest_threshold = baseline_median + 3 * abs(baseline_mad)
                 values = samples[:, channel_index] if samples.size else []
                 valid = [
                     (index, float(value))
                     for index, value in enumerate(values)
                     if isfinite(value) and value != config.missing_value
                 ]
+                # The passive median plus a 3-MAD noise margin is treated as
+                # zero. Normalize the remaining envelope to the strongest
+                # above-rest sample in this recording (per channel).
+                above_rest = [
+                    (index, value, max(0.0, value - rest_threshold))
+                    for index, value in valid
+                ]
+                set_peak = max((activity for _, _, activity in above_rest), default=0.0)
                 denominator = max(len(values) - 1, 1)
                 readings = [
                     {
                         "time_s": duration_s * index / denominator,
                         "raw": value,
-                        "strain_pct": round(max(0.0, min(100.0, (value - baseline_median) / scale * 100)), 1),
+                        "above_rest": round(activity, 3),
+                        "strain_pct": round(activity / set_peak * 100, 1) if set_peak > 0 else 0.0,
                     }
-                    for index, value in valid
+                    for index, value, activity in above_rest
                 ]
                 recordings.append({
                     "channel": channel_name,
