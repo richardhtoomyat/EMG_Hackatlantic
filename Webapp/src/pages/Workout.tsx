@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import ActivationRing from "../components/ActivationRing";
-import LiveRecorder from "../components/LiveRecorder";
+import StationRecorder from "../components/StationRecorder";
 import { StatRows } from "../components/StatGrid";
 import { useAppData, useRefreshData } from "../data/dataContext";
 import { EXERCISES } from "../data/mockData";
@@ -14,7 +14,7 @@ export default function Workout() {
   if (enabled && user) {
     return (
       <>
-        <LiveRecorder />
+        <StationRecorder />
         <SaveTestSession />
       </>
     );

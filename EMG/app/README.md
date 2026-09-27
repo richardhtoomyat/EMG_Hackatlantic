@@ -31,21 +31,30 @@ python src/streamer.py
 
 The streamer keeps scanning for configured names, connects when each shield appears, and retries after disconnects.
 
-## Recording into the web app (`src/bridge.py`)
+## Sensor station (`src/station.py`)
 
-`bridge.py` connects this laptop's sensors to the activateMyo web app. It reads
-the LibEMG buffer that `streamer.py` fills, turns the left/right envelope into
-% activation, reps, time under tension and sets, and talks to the web app over
-**Supabase Realtime** — so it works with the deployed site, from any device.
-It never writes to the database itself: the signed-in browser saves the data.
+This PC plus the MyoWare rig is a **shared station**: anyone can walk up, sign
+in on their phone, show a QR code to the webcam, and record into *their own*
+account. One user at a time; when they disconnect (or log out, or are idle for
+10 minutes) the next person can connect.
 
 ```
-Workout screen ──start / next set / finish──►  Supabase Realtime  ──►  bridge.py ─► LibEMG ─► MyoWare (BLE)
-      ▲  saves sessions/sets rows                "myo:<account id>"        │
-      └────────── live (5/s), set_complete, session_complete ◄────────────┘
+phone (web app, signed in) ──HTTPS──► Vercel API (/api/me/*) ──► Supabase: stations, connect_codes,
+                                           ▲    │                  station_commands, sessions, sets
+                     live data (not stored) │    │ commands (long-poll)
+                          Upstash Redis ◄───┘    ▼
+                                station.py (/api/station/*) ─► recorder ─► LibEMG ─► MyoWare (BLE)
 ```
 
-### Setup (once)
+- The station only talks HTTPS to the web app's API, authenticated with its
+  own station key. It sends JSON (sets, summaries, live data); Vercel decides
+  which account it belongs to (whoever is connected) and does fixed
+  inserts/updates. The station never sees a database key or anyone's data.
+- **Raw envelope** + live metrics go out 5×/s while a user is connected and
+  are plotted on the phone. They pass through Upstash Redis and expire after
+  ~15 s — never saved. Saved: sessions and sets (processed metrics).
+
+### Setup (once per PC)
 
 1. Python **3.12** (the pinned `requirements.txt` is compiled for 3.12 on
    Windows), e.g. `conda create -n myo python=3.12 && conda activate myo`, then:
@@ -60,34 +69,38 @@ Workout screen ──start / next set / finish──►  Supabase Realtime  ─�
 
    An error like *"Could not find a version that satisfies aiohappyeyeballs==2.7.1
    … Requires-Python >=3.10"* means the active Python is too old. If one package
-   fails to build, pip installs nothing — e.g. `No module named 'realtime'` or
-   `'bleak'` afterwards.
-2. `cp .env.example .env` and fill in `SUPABASE_URL` / `SUPABASE_ANON_KEY` — the
-   same values as the web app's `VITE_SUPABASE_*`. Never the `service_role` key.
-3. `python src/bridge.py --check` — confirms messages go through Supabase Realtime.
-4. In Supabase, `Webapp/supabase/write_access.sql` must have been run (the
-   browser saves sessions and sets as the signed-in user).
+   fails to build, pip installs nothing — e.g. `No module named 'bleak'` afterwards.
+2. Run it once — it registers the station with the web app and saves
+   `STATION_ID`, `STATION_NAME` and `STATION_KEY` to `EMG/app/.env`:
+   ```bash
+   python src/station.py --name "Gym PC 1"
+   ```
+   To point at another deployment set `STATION_API_URL` in `.env` (default
+   `https://emg-hackatlantic.vercel.app`) or pass `--api`. Delete the three
+   `STATION_*` lines to register the PC again as a new station.
+3. **macOS:** allow the terminal app to use the **Camera** (System Settings →
+   Privacy & Security → Camera) and **Bluetooth**, then restart the terminal.
 
 ### Every session
 
 ```bash
-python src/bridge.py --email you@example.com   # first run: the account you sign in with
-python src/bridge.py                           # later runs (email saved in .env)
-python src/bridge.py --simulate                # no hardware: synthetic L/R signal with reps
+python src/station.py              # real sensors + webcam QR scanner
+python src/station.py --simulate   # no hardware: synthetic L/R signal with reps
+python src/station.py --no-camera  # no webcam: type the code shown on the phone
 ```
 
-- The connection is set up **from this terminal only** — nothing to enter on
-  the website. The bridge looks up the account for that email and joins its
-  channel; open the **Workout** screen signed in as the same account and it
-  shows *Laptop online* and which sensors are live. To record for another
-  account, run with a different `--email`.
-- **Start recording** creates the `sessions` row immediately and shows its
-  **session ID** plus ready-to-run SQL. **Next set** saves that set's row;
-  **Finish** writes the score/end time and final set data; **Cancel** deletes it.
-- `http://localhost:5000` shows a live chart of both channels at the full
-  sample rate — the quickest way to see if the signal is clean. `--port 0`
-  turns it off, `--port 5055` moves it (on macOS, port 5000 is often taken by
-  AirPlay Receiver).
+1. On the phone: sign in → **Workout** → **Show QR code**.
+2. Hold it up to the camera window (or type the `XXXXX-XXXXX` code in this
+   terminal). The terminal prints *Connected: <name>*, the phone shows the
+   station, its sensors and the live signal.
+3. On the phone: pick the exercise → **Start recording** → **Next set** →
+   **Finish**. Each set is saved as it completes, Finish saves the summary.
+   **Cancel** deletes the session.
+4. **Disconnect** on the phone, **Logout**, typing `end` here, or 10 minutes
+   without activity frees the station. An unfinished workout is discarded.
+
+Terminal commands: a connect code · `end` (disconnect the user) · `quit`.
+Codes are single-use and expire after 2 minutes.
 
 ### Tuning (`config.yml` → `recording:`)
 
@@ -99,8 +112,8 @@ python src/bridge.py --simulate                # no hardware: synthetic L/R sign
 
 ### Things to watch when running LibEMG + the MyoWare rig
 
-- **Run one reader at a time.** `streamer.py`'s own `__main__` and `bridge.py`
-  each start a BLE streamer process. LibEMG lets the second one attach to the
+- **Run one reader at a time.** `streamer.py`'s own `__main__`, `run.py` and
+  `station.py` each start a BLE streamer process. LibEMG lets the second one attach to the
   existing shared-memory buffer ("emg already exists in shared memory"), but
   each MyoWare shield accepts only one BLE connection, so two streamers fight
   over the sensors. Close one before starting the other.
@@ -114,23 +127,18 @@ python src/bridge.py --simulate                # no hardware: synthetic L/R sign
   samples; it now matches LibEMG's own streamers.
 - **Channel order = `config.yml` order**: channel 0 is `MyoWareSensorL` (left),
   channel 1 `MyoWareSensorR` (right). A missing/stale sensor sends `-1`, which
-  the bridge treats as "no data" (one ring shows 0, imbalance is not computed).
+  the station treats as "no data" (one ring shows 0, imbalance is not computed).
 - **Same placement on both sides.** With the shared adaptive scale, a sensor
   placed worse (or with different gain) shows up as imbalance. If the two
   shields read differently at rest or at max, add a per-side `calibration`.
 - **Timing:** each shield has its own BLE clock; rows pair the latest fresh
-  value from each side (see above), and the bridge timestamps rows as they are
+  value from each side (see above), and the station timestamps rows as they are
   read — fine for reps/TUT, not for sample-exact L/R comparisons.
 - **Bluetooth permissions:** on macOS allow Bluetooth for your terminal app;
   keep the shields close and charged. The streamer reconnects automatically.
-- **Supabase free plan:** Realtime allows 100 messages/s per project and 2 M
-  per month. The bridge sends 5 batched `live` messages/s per recording (plus
-  a status every 2 s), so several people can record at once.
-- **Security:** channels are public and named after the account id, which is
-  not secret (profiles are publicly readable in demo mode), so someone
-  determined could listen to or send commands to a recording. Fine for a demo;
-  for real use, sign the bridge in and switch to private channels (Realtime
-  Authorization).
+- **Camera:** the QR window must stay on the main thread (macOS). If no
+  camera opens, the station says so and you can type codes instead;
+  `--camera 1` picks another webcam, `--no-window` scans without a preview.
 
 ### Tests
 
