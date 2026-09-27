@@ -21,17 +21,28 @@ const COLORS: Record<"primary" | "secondary" | "untargeted", string> = {
   untargeted: "#D8D8D8",
 };
 
-function fillFor(muscles: MuscleMap, id: MuscleId): string {
+function strainColor(value: number): string {
+  const amount = Math.max(0, Math.min(100, value)) / 100;
+  const gray = [216, 216, 216];
+  const red = [200, 32, 47];
+  const rgb = gray.map((start, index) => Math.round(start + (red[index] - start) * amount));
+  return `rgb(${rgb.join(",")})`;
+}
+
+function fillFor(muscles: MuscleMap, id: MuscleId, activation?: Partial<Record<MuscleId, number>>): string {
+  const value = activation?.[id];
+  if (value !== undefined) return strainColor(value);
   return COLORS[muscles[id] ?? "untargeted"];
 }
 
 export interface BodyMapProps {
   muscles: MuscleMap;
+  activation?: Partial<Record<MuscleId, number>>;
   className?: string;
 }
 
-export default function BodyMap({ muscles, className }: BodyMapProps) {
-  const f = (id: MuscleId) => fillFor(muscles, id);
+export default function BodyMap({ muscles, activation, className }: BodyMapProps) {
+  const f = (id: MuscleId) => fillFor(muscles, id, activation);
 
   return (
     <svg

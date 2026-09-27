@@ -68,6 +68,11 @@ class MuscleActivationRecording:
         """Whether the background collector is currently running."""
         return self._recording_active
 
+    @property
+    def duration_s(self) -> float:
+        """Duration of the most recently stopped recording."""
+        return self._duration_s
+
     def start(self) -> None:
         """Begin collecting new samples; starting twice raises ``RuntimeError``."""
         if self._recording_active:
