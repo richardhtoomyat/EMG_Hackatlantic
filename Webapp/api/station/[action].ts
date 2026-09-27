@@ -10,7 +10,7 @@
  *   POST /api/station/set        {session_id, set}  → save one set for the connected user
  *   POST /api/station/finish     {session_id, ended_at, activation_score, sets}
  *   POST /api/station/message    {text}             → a line typed in the station terminal (phone's Test tab; not stored)
- *   POST /api/station/profile    {age}              → test write: set the connected user's profiles.age
+ *   POST /api/station/profile    {age | weight_kg}  → test write: one profile column of the connected user
  *   POST /api/station/release                      → "End session" pressed on the station
  */
 import { requireStation, secret, sha256, userName, type StationRow } from "../_lib/auth.js";
@@ -187,22 +187,40 @@ async function message(station: StationRow, body: { text?: unknown }) {
 }
 
 /**
- * Test write from the station terminal (`/age 25`): a fixed update of one
- * column, only for the user connected to this station.
+ * Test writes from the station terminal (`/age 25`, `/weight 72.5`): fixed
+ * updates of single profile columns, only for the user connected to this station.
  */
-async function profile(station: StationRow, body: { age?: unknown }) {
+const PROFILE_FIELDS = {
+  age: { min: 5, max: 120, decimals: 0, stamp: null },
+  weight_kg: { min: 20, max: 300, decimals: 1, stamp: "weight_updated_at" }, // same as the app's weight form
+} as const;
+
+async function profile(station: StationRow, body: Record<string, unknown>) {
   if (!station.current_user_id) throw new HttpError(409, "Nobody is connected to this station");
-  const age = Math.round(num(body.age, "age", 5, 120));
+  const field = Object.keys(PROFILE_FIELDS).find((k) => body[k] !== undefined) as keyof typeof PROFILE_FIELDS | undefined;
+  if (!field) throw new HttpError(400, `Send one of: ${Object.keys(PROFILE_FIELDS).join(", ")}`);
+  const spec = PROFILE_FIELDS[field];
+  const f = 10 ** spec.decimals;
+  const value = Math.round(num(body[field], field, spec.min, spec.max) * f) / f;
   const before = check(
-    await db().from("profiles").select("age").eq("id", station.current_user_id).maybeSingle(),
+    await db().from("profiles").select(field).eq("id", station.current_user_id).maybeSingle(),
     "read profile"
-  ) as { age: number | null } | null;
+  ) as Record<string, number | null> | null;
   if (!before) throw new HttpError(404, "The connected user has no profile row");
+  const patch: Record<string, unknown> = { [field]: value };
+  if (spec.stamp) patch[spec.stamp] = new Date().toISOString();
   const after = check(
-    await db().from("profiles").update({ age }).eq("id", station.current_user_id).select("age").single(),
+    await db().from("profiles").update(patch).eq("id", station.current_user_id).select(field).single(),
     "update profile"
-  ) as { age: number | null };
-  return json({ ok: true, user_name: await userName(station.current_user_id), before: before.age, after: after.age });
+  ) as Record<string, number | null>;
+  const n = (v: number | null | undefined) => (v == null ? null : Number(v));
+  return json({
+    ok: true,
+    field,
+    user_name: await userName(station.current_user_id),
+    before: n(before[field]),
+    after: n(after[field]),
+  });
 }
 
 /** The station may only save into the session it is recording, for the user connected to it. */
