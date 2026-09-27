@@ -24,8 +24,8 @@ How it works (plain HTTPS to the Vercel API, nothing else):
      is discarded.
 
 Terminal while running: a connect code (nobody connected) · any other text
-(someone connected: shown live on their phone's Test tab) · `/age <n>` (test
-write: the connected user's profiles.age) · `end` (disconnect the user) · `quit`.
+(someone connected: shown live on their phone's Test tab) · `/age <n>`,
+`/weight <kg>` (test writes to the connected user's profile) · `end` (disconnect the user) · `quit`.
 """
 
 from __future__ import annotations
@@ -325,18 +325,21 @@ class Station:
             log(f"Message not sent: {exc}")
             return True
 
-    def set_age(self, arg: str) -> None:
-        """`/age 25`: test write — the connected user's profiles.age, via Vercel."""
+    PROFILE_COMMANDS = {"/age": ("age", int, "years"), "/weight": ("weight_kg", float, "kg")}
+
+    def set_profile(self, command: str, arg: str) -> None:
+        """`/age 25`, `/weight 72.5`: test writes to the connected user's profile, via Vercel."""
+        field, parse, unit = self.PROFILE_COMMANDS[command]
         try:
-            age = int(arg)
+            value = parse(arg)
         except ValueError:
-            log("Usage: /age <number>, e.g. /age 25")
+            log(f"Usage: {command} <number>, e.g. {command} {'25' if parse is int else '72.5'}")
             return
         try:
-            r = self.api.call("POST", "profile", {"age": age})
-            log(f"Saved to Supabase: {r['user_name']}'s age {r['before']} → {r['after']}")
+            r = self.api.call("POST", "profile", {field: value})
+            log(f"Saved to Supabase: {r['user_name']}'s {field} {r['before']} → {r['after']} {unit}")
         except ApiError as exc:
-            log(f"Age not saved: {exc}")
+            log(f"{field} not saved: {exc}")
 
     def release(self) -> None:
         try:
@@ -491,7 +494,7 @@ def main() -> None:
           f"  Sign in on your phone → Workout → Connect to station, then "
           f"{'show the QR code to the camera or ' if scanner else ''}type the code here.\n"
           "  Type: <code> to connect · any text = message to the connected phone (Test tab) · "
-          "/age <n> (test: save the connected user's age) · end (disconnect user) · quit\n", flush=True)
+          "/age <n> · /weight <kg> (test: save to the connected user's profile) · end (disconnect user) · quit\n", flush=True)
 
     lines: "queue.Queue[str]" = queue.Queue()
     threading.Thread(target=stdin_forever, args=(lines,), daemon=True, name="stdin").start()
@@ -513,11 +516,12 @@ def main() -> None:
                         station.release()
                     else:
                         log("Nobody is connected.")
-                elif word.startswith("/age"):
+                elif word.split()[0] in Station.PROFILE_COMMANDS:
+                    command, _, arg = line.partition(" ")
                     if station.connected:
-                        station.set_age(line[4:].strip())
+                        station.set_profile(command.lower(), arg.strip())
                     else:
-                        log("Nobody is connected — connect first, then /age <number>.")
+                        log(f"Nobody is connected — connect first, then {command.lower()} <number>.")
                 elif not station.connected or not station.send_message(line):
                     station.claim(line)
             if scanner is not None:
