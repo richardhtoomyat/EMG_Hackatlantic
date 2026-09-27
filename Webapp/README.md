@@ -71,12 +71,59 @@ runs in demo mode on the mock data in `src/data/mockData.ts` (no login).
    `/body-metrics` first. Age is computed from the birth date, so it rises
    every birthday. In-app reminders (Today + Profile): weight every 20 days,
    height yearly while under 22 (`src/lib/bodyMetrics.ts`).
-7. **Test data (optional)** — `supabase/test_data.sql` fills one account
+7. **Share with Coach** — run `supabase/coach_sharing.sql`. Athletes press
+   *Generate share code* on the Coach screen (6 characters, single use, valid
+   7 days); a coach account enters it on their Coach screen to link, and can
+   switch between their athletes. Either side can remove the link. Codes and
+   links are visible only to the people involved; links can only be created
+   by redeeming a code (the script replaces every existing `coach_links`
+   policy).
+8. **Sensor stations (live recording)** — a PC with the MyoWare rig runs
+   `python src/station.py` (`EMG/app`, see `EMG/app/README.md`) and is shared:
+   a user signs in on their phone, opens **Workout → Show QR code**, and the
+   station's webcam scans it; from then on it records into that account
+   until they disconnect or log out (10 minutes idle also frees it).
+   Setup, once:
+   - Run `supabase/stations.sql` (tables `stations`, `connect_codes`,
+     `station_commands`; server-only: RLS on, no policies).
+   - Vercel → Project → Settings → Environment Variables (Production):
+     `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API; **server
+     only — never a `VITE_` variable**) and `SUPABASE_URL` (or it falls back
+     to `VITE_SUPABASE_URL`).
+   - Vercel → Storage / Marketplace → **Upstash for Redis** → create a free
+     database and connect it to this project (adds `KV_REST_API_URL` /
+     `KV_REST_API_TOKEN`). It carries the live signal for ~15 s; nothing
+     there is kept.
+   - Redeploy.
+
+   How it fits together (`api/` = Vercel functions, `src/lib/useStation.ts`,
+   `src/components/StationRecorder.tsx`):
+
+   ```
+   phone ── /api/me/* (Supabase access token) ──► Vercel ── service role ──► Supabase
+   station ── /api/station/* (station key) ─────►   │   ◄── live data ──► Upstash (15 s)
+   ```
+
+   | Endpoint | Who | What |
+   |---|---|---|
+   | `POST /api/me/connect-code`, `GET /api/me/connect-status` | phone | one-time QR code (2 min), wait for a scan |
+   | `GET /api/me/station`, `POST /api/me/release` | phone | connected station / disconnect (also on Logout) |
+   | `POST /api/me/command` | phone | `start` (creates the `sessions` row) · `next_set` · `finish` · `cancel` |
+   | `GET /api/me/live?since=` | phone | raw envelope + live metrics |
+   | `POST /api/station/register` | station | first run → station id + key |
+   | `POST /api/station/heartbeat`, `claim`, `release` | station | sensors online, scanned QR, "end" |
+   | `GET /api/station/commands` | station | long-poll mailbox (≤ 8 s) |
+   | `POST /api/station/live`, `set`, `finish` | station | live data; sets/summary saved to the **connected** user's session |
+
+   The station sends JSON only; Vercel checks it is recording that session
+   for the connected user and writes fixed rows. The session ID and SQL to
+   inspect it are shown on the Workout screen.
+9. **Test data (optional)** — `supabase/test_data.sql` fills one account
    (set `target_email` at the top) with sessions aimed at each screen: today
    (Today + Session with coach feedback and L/R imbalance), this week
    (week bars, trends), last week (History only), and a session with no
    sets. `supabase/test_data_cleanup.sql` removes them again.
-8. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
+10. **Demo data (optional)** — `supabase/seed_demo.sql` creates two logins,
    `alex@activatemyo.io` (athlete) and `coach@activatemyo.io` (coach), both
    with password `demo-password-123`, plus sessions/sets.
 
@@ -88,7 +135,8 @@ How the tables map onto the UI (`src/data/supabaseData.ts`):
 | Coach | latest `coach_links` row (athletes: `athlete_id` = me; coaches: `coach_id` = me) + coach's `profiles.name` |
 | Session / History / This Week / Today | `sessions` + `sets` of the athlete (coaches see their linked athlete) |
 | Session body map | `sessions.muscle_map` (`{"f-bicep-l": "primary" \| 0-100, …}`), else the exercise definition |
-| Readiness, live Workout screen, fatigue | not stored yet — mock data |
+| Live Workout screen | the connected station (`/api/me/live`); raw signal is never stored |
+| Readiness, fatigue | not stored yet — mock data |
 
 Auth lives in `src/auth/` (`AuthProvider`, `RequireAuth`, `useAuth()`); the
 Sign in / Sign up screen is `src/pages/Login.tsx` (the first screen when

@@ -11,6 +11,7 @@
  */
 import { ALL_MUSCLE_IDS } from "./mockData";
 import { ageFromBirthDate } from "../lib/bodyMetrics";
+import { getViewedAthlete } from "./coachSharing";
 import { buildMapFromPercentages } from "../lib/muscleMap";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
@@ -214,20 +215,21 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
     bodyMetricsEnabled: !!profile && "birth_date" in profile,
   };
 
-  // Athletes see their own link; coaches see the athlete linked to them.
+  // Athletes see their own training; coaches see one of their linked athletes
+  // (the one picked on the Coach screen, else the most recently linked).
   const isCoach = profile?.role?.toLowerCase() === "coach";
-  const coachRes = await supabase
+  const linksRes = await supabase
     .from("coach_links")
     .select("athlete_id,coach_id,share_code,linked_since")
     .eq(isCoach ? "coach_id" : "athlete_id", user.id)
-    .order("linked_since", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (coachRes.error) throw coachRes.error;
-  const link = coachRes.data;
+    .order("linked_since", { ascending: false });
+  if (linksRes.error) throw linksRes.error;
+  const links = linksRes.data ?? [];
+  const picked = isCoach ? getViewedAthlete() : null;
+  const link = links.find((l) => l.athlete_id === picked) ?? links[0] ?? null;
   const athleteId = isCoach ? link?.athlete_id ?? null : user.id;
 
-  const [coachProfileRes, sessionsRes] = await Promise.all([
+  const [coachProfileRes, sessionsRes, viewedRes] = await Promise.all([
     link?.coach_id
       ? supabase.from("profiles").select("name").eq("id", link.coach_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -239,9 +241,18 @@ export async function fetchAppData(fallback: AppData, user: User): Promise<AppDa
           .order("started_at", { ascending: false })
           .limit(50)
       : Promise.resolve({ data: [], error: null }),
+    isCoach && athleteId
+      ? supabase.from("profiles").select("*").eq("id", athleteId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
   if (coachProfileRes.error) throw coachProfileRes.error;
   if (sessionsRes.error) throw sessionsRes.error;
+  if (viewedRes.error) throw viewedRes.error;
+  if (isCoach && athleteId) {
+    const v = (viewedRes.data ?? {}) as Record<string, string | null>;
+    const full = [v.first_name, v.last_name].filter(Boolean).join(" ");
+    data.VIEWING = { athleteId, athleteName: full || v.name || "Athlete" };
+  }
 
   const coachName = coachProfileRes.data?.name ?? "Your coach";
   if (link) {

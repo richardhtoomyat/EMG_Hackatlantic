@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/authContext";
 import ActivationRing from "../components/ActivationRing";
+import StationRecorder from "../components/StationRecorder";
 import { StatRows } from "../components/StatGrid";
 import { useAppData, useRefreshData } from "../data/dataContext";
 import { EXERCISES } from "../data/mockData";
@@ -9,6 +10,20 @@ import { saveSession } from "../data/saveSession";
 import { generateTestSession } from "../data/testSession";
 
 export default function Workout() {
+  const { enabled, user } = useAuth();
+  if (enabled && user) {
+    return (
+      <>
+        <StationRecorder />
+        <SaveTestSession />
+      </>
+    );
+  }
+  return <DemoWorkout />;
+}
+
+/** Demo mode (no Supabase): the original static live-set design with mock data. */
+function DemoWorkout() {
   const { LIVE_SET } = useAppData();
   return (
     <div className="flex-grow flex flex-col">
@@ -62,7 +77,6 @@ export default function Workout() {
         End Set
       </Link>
 
-      <SaveTestSession />
     </div>
   );
 }

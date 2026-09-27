@@ -164,4 +164,6 @@ export interface AppData {
   LIVE_SET: LiveSet;
   SESSION_HISTORY: SessionHistoryItem[];
   WEEKLY_TRENDS: WeeklyTrends;
+  /** Coaches: the athlete whose training is shown (null for athletes / demo). */
+  VIEWING: { athleteId: string; athleteName: string } | null;
 }

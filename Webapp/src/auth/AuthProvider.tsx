@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { initialAuthError, supabase } from "../lib/supabase";
 import { AuthContext, type SignUpInput } from "./authContext";
+import { releaseStation } from "../lib/stationApi";
 
 /**
  * Supabase email/password auth. The session is persisted in localStorage by
@@ -63,6 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (!supabase) return;
+    // Free the sensor station first (needs the token); an unfinished workout is discarded.
+    await releaseStation().catch(() => {});
     const { error } = await supabase.auth.signOut();
     // Clear local state even if the server call failed (e.g. offline).
     if (error) console.error("[activateMyo] sign-out error:", error);

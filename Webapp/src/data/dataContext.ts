@@ -13,6 +13,7 @@ export const MOCK_DATA: AppData = {
   LIVE_SET: mock.LIVE_SET,
   SESSION_HISTORY: mock.SESSION_HISTORY,
   WEEKLY_TRENDS: mock.WEEKLY_TRENDS,
+  VIEWING: null,
 };
 
 export type DataSource = "mock" | "loading" | "supabase" | "error";
